@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Interview Room - intervAI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { 
+            font-family: 'Inter', sans-serif; 
+            background: radial-gradient(circle at top center, #0f172a 0%, #030712 100%);
+            color: #f3f4f6; 
+        }
+        #candidate-video { transform: scaleX(-1); }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #030712; }
+        ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 4px; }
+    </style>
+</head>
+<body class="h-full flex flex-col justify-between p-6 selection:bg-cyan-500 selection:text-white">
+
+    <!-- Anti-Cheat Security Warning Overlay -->
+    <div id="cheat-warning" class="fixed inset-0 bg-red-950/80 backdrop-blur-md z-50 hidden flex flex-col items-center justify-center p-6 text-center">
+        <div class="bg-slate-900 border border-red-500 p-8 rounded-3xl max-w-md shadow-2xl space-y-4">
+            <div class="w-12 h-12 bg-red-500/20 text-red-400 rounded-full flex items-center justify-center mx-auto text-xl font-bold">⚠️</div>
+            <h2 class="text-xl font-bold text-red-400">Security Warning: Screen Switching Detected!</h2>
+            <p class="text-xs text-gray-300">Leaving the interview room or switching tabs is monitored as potential cheating. Please remain focused.</p>
+            <button onclick="dismissWarning()" class="px-6 py-2.5 bg-red-600 hover:bg-red-500 text-white text-xs font-semibold rounded-xl transition-all shadow-lg">I Understand, Return to Room</button>
+        </div>
+    </div>
+
+    <!-- Top Header -->
+    <header class="flex justify-between items-center bg-slate-900/60 backdrop-blur-xl border border-slate-800/80 px-6 py-4 rounded-2xl shadow-xl">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 bg-cyan-400 rounded-full animate-ping"></div>
+            <div>
+                <h1 class="text-xl font-bold bg-gradient-to-r from-cyan-400 via-indigo-400 to-purple-500 bg-clip-text text-transparent">intervAI Secure Room</h1>
+                <p id="interview-subtitle" class="text-xs text-gray-400">Target Role: Loading session...</p>
+            </div>
+        </div>
+        <div class="flex items-center space-x-4">
+            <div class="flex items-center space-x-2 px-3.5 py-1.5 bg-slate-950/80 border border-slate-800 rounded-xl">
+                <span class="w-2 h-2 bg-emerald-400 rounded-full"></span>
+                <span id="timer" class="text-cyan-400 font-mono text-sm tracking-wider">00:00</span>
+            </div>
+            <button onclick="endInterviewEarly()" class="px-4 py-2 bg-red-500/10 border border-red-500/30 hover:bg-red-600 text-red-400 hover:text-white text-xs font-semibold rounded-xl transition-all shadow-lg">End</button>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="grid grid-cols-1 lg:grid-cols-3 gap-6 my-6 flex-grow">
+        
+        <div class="lg:col-span-2 flex flex-col space-y-6">
+            <!-- 3D Avatar Sandbox Box -->
+            <div class="relative bg-slate-900/80 backdrop-blur-xl border border-slate-800/90 rounded-3xl overflow-hidden shadow-xl flex flex-col justify-between p-6 min-h-[380px]">
+                <div class="flex justify-between items-center relative z-10 mb-2">
+                    <span id="avatar-status-badge" class="px-3.5 py-1.5 bg-indigo-500/10 border border-indigo-500/30 text-indigo-400 text-xs rounded-full font-medium flex items-center space-x-2">
+                        <span class="w-2 h-2 bg-indigo-400 rounded-full animate-pulse"></span>
+                        <span>Adaptive Neural Engine Active</span>
+                    </span>
+                    <span id="question-counter" class="text-xs font-mono text-gray-400 bg-slate-950/60 px-3 py-1 rounded-lg border border-slate-800">Question 1 of 15</span>
+                </div>
+                
+                <div id="avatar-canvas-container" class="relative w-full h-60 bg-slate-950 rounded-2xl overflow-hidden border border-slate-800 flex items-center justify-center">
+                    <div id="avatar-loading" class="absolute inset-flex items-center justify-center text-xs text-cyan-400">Loading 3D Sandbox...</div>
+                </div>
+
+                <div class="mt-4 bg-slate-950/60 p-4 rounded-2xl border border-slate-800/80">
+                    <p id="ai-question-text" class="text-sm md:text-base font-medium text-gray-200 leading-relaxed">Initializing secure connection with FastAPI neural backend...</p>
+                </div>
+                <div id="interim-feedback-box" class="hidden px-4 py-2.5 bg-cyan-950/60 border border-cyan-800/60 text-cyan-300 text-xs rounded-xl mt-2"></div>
+            </div>
+
+            <!-- Answer Box (Dual Mode: Type or Voice) -->
+            <div class="bg-slate-900/80 backdrop-blur-xl border border-slate-800/90 rounded-3xl p-6 flex flex-col space-y-4 shadow-xl">
+                <div class="flex justify-between items-center">
+                    <label class="text-xs font-semibold uppercase tracking-wider text-gray-400">Response (Speak or Write)</label>
+                    <button id="mic-btn" onclick="toggleVoiceInput()" class="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-gray-300 text-xs rounded-xl flex items-center space-x-1.5 transition-all shadow-md">
+                        <svg class="w-3.5 h-3.5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"/></svg>
+                        <span id="mic-status-text">Start Voice Mic</span>
+                    </button>
+                </div>
+                <textarea id="candidate-answer" rows="3" class="w-full bg-slate-950/80 border border-slate-800 rounded-2xl p-4 text-sm text-gray-200 focus:outline-none focus:border-cyan-500 transition-all resize-none shadow-inner" placeholder="Type your detailed answer or click 'Start Voice Mic' to speak..."></textarea>
+                <div class="flex justify-end">
+                    <button onclick="submitAnswer()" id="submit-btn" class="px-7 py-3 bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white font-semibold text-sm rounded-2xl shadow-lg transition-all flex items-center space-x-2">
+                        <span>Submit Answer & Next</span>
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Column: Webcam + Clean Transcript -->
+        <div class="flex flex-col space-y-6">
+            <div class="bg-slate-900/80 backdrop-blur-xl border border-slate-800/90 rounded-3xl overflow-hidden shadow-xl flex flex-col p-4">
+                <div class="flex justify-between items-center mb-3 px-1">
+                    <span class="text-xs font-semibold uppercase tracking-wider text-gray-400">Candidate Feed & Anti-Cheat</span>
+                    <span class="flex items-center space-x-1.5 px-2.5 py-1 bg-red-500/10 border border-red-500/30 rounded-full">
+                        <span class="w-2 h-2 bg-red-500 rounded-full animate-ping"></span>
+                        <span class="text-[10px] text-red-400 font-mono tracking-wider">SECURE</span>
+                    </span>
+                </div>
+                <div class="relative w-full h-44 bg-slate-950 rounded-2xl overflow-hidden border border-slate-800 shadow-inner">
+                    <video id="candidate-video" autoplay playsinline muted class="w-full h-full object-cover"></video>
+                </div>
+            </div>
+
+            <!-- Clean Transcript History Box -->
+            <div class="bg-slate-900/80 backdrop-blur-xl border border-slate-800/90 rounded-3xl p-5 flex flex-col justify-between flex-grow shadow-xl">
+                <div>
+                    <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3">Live Session Transcript</h3>
+                    <div id="transcript-log" class="space-y-2.5 max-h-64 overflow-y-auto text-xs text-gray-400 pr-1">
+                        <p class="text-gray-600 italic">Q&A conversation history will appear here as you progress...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        const BACKEND_URL = "";
+        let sessionId = "";
+        let currentQuestionIndex = 0;
+        let sessionTranscript = [];
+        let totalScoreAccumulator = 0;
+        let questionsAnsweredCount = 0;
+        let timerInterval = null;
+        let secondsElapsed = 0;
+
+        const activeRole = localStorage.getItem('intervai_active_role') || "Software Engineer";
+        const activeCategory = localStorage.getItem('intervai_active_category') || "Technical";
+        const activeLanguage = localStorage.getItem('intervai_active_language') || "English";
+        
+        document.getElementById('interview-subtitle').textContent = `Target Role: ${activeRole} (${activeCategory} | ${activeLanguage})`;
+
+        // --- TIMER ---
+        function startTimer() {
+            if (timerInterval) clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                secondsElapsed++;
+                const mins = String(Math.floor(secondsElapsed / 60)).padStart(2, '0');
+                const secs = String(secondsElapsed % 60).padStart(2, '0');
+                document.getElementById('timer').textContent = `${mins}:${secs}`;
+            }, 1000);
+        }
+
+        // --- ANTI-CHEAT SECURITY ---
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                document.getElementById('cheat-warning').classList.remove('hidden');
+            }
+        });
+        window.dismissWarning = function() {
+            document.getElementById('cheat-warning').classList.add('hidden');
+        };
+
+        // --- THREE.JS 3D AVATAR SCENE ---
+        let scene, camera, renderer, avatarMesh;
+        function init3DAvatarScene() {
+            const container = document.getElementById('avatar-canvas-container');
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 1000);
+            camera.position.z = 3.5;
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            container.appendChild(renderer.domElement);
+
+            scene.add(new THREE.AmbientLight(0xffffff, 1.2));
+            const pointLight = new THREE.PointLight(0x06b6d4, 2, 50);
+            pointLight.position.set(2, 3, 4);
+            scene.add(pointLight);
+
+            const geometry = new THREE.IcosahedronGeometry(1, 2);
+            const material = new THREE.MeshStandardMaterial({ color: 0x06b6d4, wireframe: true, roughness: 0.3, metalness: 0.8 });
+            avatarMesh = new THREE.Mesh(geometry, material);
+            scene.add(avatarMesh);
+
+            document.getElementById('avatar-loading').style.display = 'none';
+
+            function animate() {
+                requestAnimationFrame(animate);
+                if (avatarMesh) { avatarMesh.rotation.y += 0.005; }
+                renderer.render(scene, camera);
+            }
+            animate();
+        }
+
+        // --- SPEECH RECOGNITION ---
+        let recognition = null;
+        let isListening = false;
+        function initSpeechRecognition() {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (SpeechRecognition) {
+                recognition = new SpeechRecognition();
+                recognition.continuous = true;
+                recognition.interimResults = true;
+                recognition.lang = activeLanguage === "Hindi" ? "hi-IN" : "en-US";
+
+                recognition.onresult = (event) => {
+                    let transcript = '';
+                    for (let i = event.resultIndex; i < event.results.length; i++) {
+                        transcript += event.results[i][0].transcript;
+                    }
+                    document.getElementById('candidate-answer').value = transcript;
+                };
+            }
+        }
+
+        window.toggleVoiceInput = function() {
+            if (!recognition) { alert("Speech recognition is not supported in this browser. Please use Google Chrome."); return; }
+            const micBtn = document.getElementById('mic-btn');
+            const micText = document.getElementById('mic-status-text');
+
+            if (!isListening) {
+                recognition.start();
+                isListening = true;
+                micText.textContent = "Listening...";
+                micBtn.className = "px-3.5 py-1.5 bg-cyan-500/20 border border-cyan-500/40 text-cyan-300 text-xs rounded-xl flex items-center space-x-1.5 animate-pulse shadow-md";
+            } else {
+                recognition.stop();
+                isListening = false;
+                micText.textContent = "Start Voice Mic";
+                micBtn.className = "px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-gray-300 text-xs rounded-xl shadow-md";
+            }
+        };
+
+        // --- TEXT-TO-SPEECH ---
+        function speakQuestion(text) {
+            document.getElementById('ai-question-text').textContent = text;
+            if ('speechSynthesis' in window) {
+                window.speechSynthesis.cancel();
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.lang = activeLanguage === "Hindi" ? "hi-IN" : "en-US";
+                
+                utterance.onstart = () => { if (avatarMesh) avatarMesh.scale.set(1.15, 1.15, 1.15); };
+                utterance.onend = () => { if (avatarMesh) avatarMesh.scale.set(1, 1, 1); };
+
+                window.speechSynthesis.speak(utterance);
+            }
+        }
+
+        // --- START SESSION ---
+        async function startSession() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                document.getElementById('candidate-video').srcObject = stream;
+            } catch (e) { console.error("Webcam error:", e); }
+
+            startTimer();
+            init3DAvatarScene();
+            initSpeechRecognition();
+
+            try {
+                const res = await fetch(`${BACKEND_URL}/api/interview/start`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ role: activeRole, category: activeCategory, language: activeLanguage })
+                });
+                const result = await res.json();
+                if (result.success) {
+                    sessionId = result.session_id;
+                    speakQuestion(result.data.question);
+                }
+            } catch (e) {
+                document.getElementById('ai-question-text').textContent = "Error: Unable to connect to FastAPI backend server.";
+            }
+        }
+
+        // --- SUBMIT ANSWER ---
+        window.submitAnswer = async function() {
+            if (isListening) toggleVoiceInput();
+            const answerInput = document.getElementById('candidate-answer');
+            const answerText = answerInput.value.trim();
+            if (!answerText) { alert("Please provide an answer."); return; }
+
+            const currentQ = document.getElementById('ai-question-text').textContent;
+            sessionTranscript.push({ question: currentQ, answer: answerText });
+            updateTranscriptUI(currentQ, answerText);
+
+            answerInput.value = "";
+            const btn = document.getElementById('submit-btn');
+            btn.disabled = true;
+            btn.innerHTML = `<span>Evaluating response...</span>`;
+
+            try {
+                const res = await fetch(`${BACKEND_URL}/api/interview/evaluate`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ session_id: sessionId, question_index: currentQuestionIndex, answer_text: answerText, role: activeRole, category: activeCategory, language: activeLanguage })
+                });
+                const result = await res.json();
+
+                if (result.success) {
+                    totalScoreAccumulator += result.score_awarded;
+                    questionsAnsweredCount++;
+
+                    const fbBox = document.getElementById('interim-feedback-box');
+                    fbBox.classList.remove('hidden');
+                    fbBox.textContent = `Feedback: ${result.interim_feedback}`;
+
+                    if (result.is_completed || questionsAnsweredCount >= 15) {
+                    concludeSession();
+                    } else {
+                        currentQuestionIndex++;
+                        document.getElementById('question-counter').textContent = `Question ${currentQuestionIndex + 1} of 15`;
+                        speakQuestion(result.next_question.question);
+                    }
+                }
+            } catch (e) {
+                console.error("Evaluation error:", e);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = `<span>Submit Answer & Next</span><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>`;
+            }
+        }
+
+        async function concludeSession() {
+            if (timerInterval) clearInterval(timerInterval);
+            const finalScore = Math.round(totalScoreAccumulator / (questionsAnsweredCount || 1));
+            const reportData = { username: "Candidate", role: activeRole, category: activeCategory, score: finalScore, transcript: sessionTranscript };
+            localStorage.setItem('intervai_latest_report', JSON.stringify(reportData));
+            alert(`Interview Completed Successfully! Final Score calculated. Redirecting to Report...`);
+            window.location.href = "report.html";
+        }
+
+        window.endInterviewEarly = function() {
+            if (confirm("Are you sure you want to end the interview early?")) {
+                if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+                concludeSession();
+            }
+        }
+
+        function updateTranscriptUI(q, a) {
+            const log = document.getElementById('transcript-log');
+            if (log.querySelector('.italic')) log.innerHTML = '';
+            log.innerHTML += `<div class="border-b border-slate-800 pb-2 mb-2"><p class="text-cyan-400 font-medium">Q: ${q}</p><p class="text-gray-300 mt-0.5">A: ${a}</p></div>`;
+        }
+
+        window.addEventListener('DOMContentLoaded', startSession);
+    </script>
+</body>
+</html>

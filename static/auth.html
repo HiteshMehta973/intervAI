@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>intervAI - Authentication Portal</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        dark: '#030712',
+                        card: '#0a1128',
+                        neonCyan: '#00f2fe',
+                        neonBlue: '#4facfe',
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Google Fonts & FontAwesome -->
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google reCAPTCHA Script -->
+    <script src="https://www.google.com/recaptcha/api.js" async defer></script>
+    <!-- EmailJS SDK for sending emails from frontend -->
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
+    <script type="text/javascript">
+        (function() {
+            emailjs.init("x378TFNPX8-lKa2EA");
+        })();
+    </script>
+    <style>
+        body { font-family: 'Plus Jakarta Sans', sans-serif; }
+        .glass-card {
+            background: rgba(8, 17, 35, 0.75);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            border: 1px solid rgba(0, 242, 254, 0.2);
+        }
+        .glow-effect {
+            box-shadow: 0 0 60px -15px rgba(0, 242, 254, 0.3);
+        }
+        #bgCanvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body class="bg-dark text-slate-100 min-h-screen flex items-center justify-center relative overflow-hidden">
+
+    <!-- 4D Interactive Canvas Background -->
+    <canvas id="bgCanvas"></canvas>
+
+    <!-- Ambient Glowing Background Blobs -->
+    <div class="absolute -top-40 -left-40 w-96 h-96 bg-neonCyan/15 rounded-full blur-[140px] pointer-events-none z-0"></div>
+    <div class="absolute -bottom-40 -right-40 w-96 h-96 bg-neonBlue/15 rounded-full blur-[140px] pointer-events-none z-0"></div>
+
+    <!-- Main Auth Container -->
+    <div class="relative z-10 w-full max-w-md mx-4 my-8">
+        
+        <!-- Logo / Brand Header -->
+        <div class="text-center mb-8">
+            <a href="index.html" class="inline-flex items-center gap-3 group">
+                <div class="w-12 h-12 rounded-2xl bg-gradient-to-tr from-cyan-500 via-blue-600 to-indigo-600 flex items-center justify-center glow-effect group-hover:scale-110 transition-transform duration-300">
+                    <i class="fa-solid fa-brain text-white text-xl"></i>
+                </div>
+                <span class="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-cyan-400 via-blue-400 to-indigo-400 bg-clip-text text-transparent">intervAI</span>
+            </a>
+            <p class="text-xs uppercase tracking-widest text-slate-400 font-semibold mt-2">Next-Gen AI Avatar Interview Platform</p>
+        </div>
+
+        <!-- Auth Card -->
+        <div class="glass-card rounded-3xl p-8 glow-effect">
+            
+            <!-- Tab Switcher -->
+            <div class="flex rounded-xl bg-slate-950/80 p-1.5 mb-8 border border-slate-800/80">
+                <button type="button" id="tabSignin" onclick="switchTab('signin')" class="flex-1 py-2.5 text-sm font-semibold rounded-lg transition-all duration-300 bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/20">Sign In</button>
+                <button type="button" id="tabSignup" onclick="switchTab('signup')" class="flex-1 py-2.5 text-sm font-semibold rounded-lg transition-all duration-300 text-slate-400 hover:text-white">Sign Up</button>
+            </div>
+
+            <!-- Toast / Alert Notification -->
+            <div id="authAlert" class="hidden mb-6 p-4 rounded-xl text-sm font-medium border flex items-center gap-3 transition-all">
+                <i id="alertIcon" class="fa-solid text-lg"></i>
+                <span id="alertMessage"></span>
+            </div>
+
+            <!-- Form -->
+            <form id="authForm" onsubmit="handleAuthSubmit(event)" class="space-y-4">
+                
+                <!-- Full Name Field (Sign Up Only) -->
+                <div id="nameFieldContainer" class="space-y-1.5 hidden transition-all duration-300">
+                    <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider">Full Name</label>
+                    <div class="relative">
+                        <span class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-500">
+                            <i class="fa-solid fa-user"></i>
+                        </span>
+                        <input type="text" id="fullName" placeholder="John Doe" class="w-full bg-slate-950/60 border border-slate-700/60 rounded-xl px-4 py-3 pl-11 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/20 transition-all">
+                    </div>
+                </div>
+
+                <!-- Email Field (Sign Up Only) -->
+                <div id="emailFieldContainer" class="space-y-1.5 hidden transition-all duration-300">
+                    <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider">Email Address</label>
+                    <div class="relative">
+                        <span class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-500">
+                            <i class="fa-solid fa-envelope"></i>
+                        </span>
+                        <input type="email" id="email" placeholder="john@example.com" class="w-full bg-slate-950/60 border border-slate-700/60 rounded-xl px-4 py-3 pl-11 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/20 transition-all">
+                    </div>
+                </div>
+
+                <!-- Username Field -->
+                <div class="space-y-1.5">
+                    <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider">Username</label>
+                    <div class="relative">
+                        <span class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-500">
+                            <i class="fa-solid fa-at"></i>
+                        </span>
+                        <input type="text" id="username" required placeholder="your_username" class="w-full bg-slate-950/60 border border-slate-700/60 rounded-xl px-4 py-3 pl-11 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/20 transition-all">
+                    </div>
+                </div>
+
+                <!-- Password Field -->
+                <div class="space-y-1.5">
+                    <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider">Password</label>
+                    <div class="relative">
+                        <span class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-500">
+                            <i class="fa-solid fa-lock"></i>
+                        </span>
+                        <input type="password" id="password" required placeholder="8-10 chars, 1 special char" class="w-full bg-slate-950/60 border border-slate-700/60 rounded-xl px-4 py-3 pl-11 pr-11 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/20 transition-all">
+                        <button type="button" onclick="togglePassword()" class="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-500 hover:text-slate-300">
+                            <i id="eyeIcon" class="fa-solid fa-eye"></i>
+                        </button>
+                    </div>
+                    <p class="text-[11px] text-slate-400 pl-1">Must be 8-10 chars, alphanumeric with at least 1 special character.</p>
+                </div>
+
+                <!-- Google reCAPTCHA Widget (Sign Up Only) -->
+                <div id="captchaContainer" class="hidden pt-1 flex justify-center">
+                    <div class="g-recaptcha" data-sitekey="6Ld8NwMuAAAAAMaE61BOmfxx8_lkamzD_2tAm_Gi" data-theme="dark"></div>
+                </div>
+
+                <!-- Remember Me & Forgot Password (Sign In Only) -->
+                <div id="signinOptions" class="flex items-center justify-between text-xs text-slate-400 pt-1">
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" class="rounded bg-slate-950 border-slate-700 text-cyan-500 focus:ring-0">
+                        <span>Remember me</span>
+                    </label>
+                    <a href="#" onclick="showAlert('Password reset instructions sent to your registered details.', 'info')" class="hover:text-cyan-400 transition-colors">Forgot password?</a>
+                </div>
+
+                <!-- Submit Button -->
+                <button type="submit" id="submitBtn" class="w-full py-3.5 rounded-xl bg-gradient-to-r from-cyan-500 via-blue-500 to-indigo-600 text-white font-bold text-sm shadow-xl shadow-cyan-500/25 hover:shadow-cyan-500/40 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer mt-2">
+                    <span id="submitBtnText">Sign In to Dashboard</span>
+                    <i id="submitSpinner" class="fa-solid fa-circle-notch fa-spin hidden"></i>
+                </button>
+            </form>
+
+            <!-- Divider -->
+            <div class="relative my-6">
+                <div class="absolute inset-0 flex items-center"><div class="w-full border-t border-slate-800/80"></div></div>
+                <div class="relative flex justify-center text-xs uppercase"><span class="bg-card px-4 text-slate-500 font-semibold tracking-wider">Or continue with</span></div>
+            </div>
+
+            <!-- Real Google OAuth Button -->
+            <button type="button" id="googleBtn" onclick="handleGoogleLogin()" class="w-full py-3 px-4 rounded-xl bg-slate-950/90 border border-slate-700/60 hover:border-cyan-500/60 text-slate-200 font-semibold text-sm flex items-center justify-center gap-3 hover:bg-slate-900 transition-all group cursor-pointer shadow-lg">
+                <svg class="w-5 h-5 group-hover:scale-110 transition-transform" viewBox="0 0 24 24">
+                    <path fill="#EA4335" d="M12 5c1.6 0 3 .6 4.1 1.6l3.1-3.1C17.3 1.8 14.8 1 12 1 7.5 1 3.7 3.6 1.9 7.4l3.7 2.9C6.5 7.3 9 5 12 5z"/>
+                    <path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.5c-.3 1.5-1.1 2.8-2.4 3.7l3.7 2.9c2.2-2 3.7-5 3.7-8.8z"/>
+                    <path fill="#FBBC05" d="M5.6 14.7c-.2-.7-.4-1.5-.4-2.7s.2-2 .4-2.7L1.9 6.4C.7 8.8 0 10.3 0 12s.7 3.2 1.9 5.6l3.7-2.9z"/>
+                    <path fill="#34A853" d="M12 23c3.2 0 6-1.1 8-3l-3.7-2.9c-1.1.7-2.5 1.2-4.3 1.2-3 0-5.5-2.3-6.4-5.3L1.9 15c1.8 3.8 5.6 8 10.1 8z"/>
+                </svg>
+                <span id="googleBtnText">Continue with Google</span>
+                <i id="googleSpinner" class="fa-solid fa-circle-notch fa-spin hidden"></i>
+            </button>
+
+        </div>
+
+        <!-- Footer Back Link -->
+        <div class="text-center mt-6">
+            <a href="index.html" class="text-xs text-slate-400 hover:text-cyan-400 transition-colors inline-flex items-center gap-2 font-semibold">
+                <i class="fa-solid fa-arrow-left"></i> Back to Home
+            </a>
+        </div>
+
+    </div>
+
+    <!-- 4D Background Canvas Script -->
+    <script>
+        const canvas = document.getElementById('bgCanvas');
+        const ctx = canvas.getContext('2d');
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        const particles = [];
+        const particleCount = Math.floor((window.innerWidth * window.innerHeight) / 16000);
+
+        for (let i = 0; i < particleCount; i++) {
+            particles.push({
+                x: Math.random() * canvas.width,
+                y: Math.random() * canvas.height,
+                vx: (Math.random() - 0.5) * 0.7,
+                vy: (Math.random() - 0.5) * 0.7,
+                radius: Math.random() * 2 + 1
+            });
+        }
+
+        function animateParticles() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            ctx.fillStyle = 'rgba(0, 242, 254, 0.45)';
+            ctx.strokeStyle = 'rgba(0, 242, 254, 0.07)';
+
+            for (let i = 0; i < particles.length; i++) {
+                let p = particles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+
+                if (p.x < 0 || p.x > canvas.width) p.vx *= -1;
+                if (p.y < 0 || p.y > canvas.height) p.vy *= -1;
+
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+                ctx.fill();
+
+                for (let j = i + 1; j < particles.length; j++) {
+                    let p2 = particles[j];
+                    let dist = Math.hypot(p.x - p2.x, p.y - p2.y);
+                    if (dist < 130) {
+                        ctx.lineWidth = 1 - dist / 130;
+                        ctx.beginPath();
+                        ctx.moveTo(p.x, p.y);
+                        ctx.lineTo(p2.x, p2.y);
+                        ctx.stroke();
+                    }
+                }
+            }
+            requestAnimationFrame(animateParticles);
+        }
+        animateParticles();
+    </script>
+
+    <!-- Firebase Auth & Cloud Firestore Script -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getAuth, signInWithPopup, GoogleAuthProvider } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyA6XeVnSY1HVleGyyW133nhmkQEvC6d9JQ",
+            authDomain: "intervai-f6dcc.firebaseapp.com",
+            projectId: "intervai-f6dcc",
+            storageBucket: "intervai-f6dcc.firebasestorage.app",
+            messagingSenderId: "360105759901",
+            appId: "1:360105759901:web:c18f5f44a134c1c99b3074",
+            measurementId: "G-405F7Q7342"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const provider = new GoogleAuthProvider();
+
+        // Google Login / Cloud Sync
+        window.handleGoogleLogin = async function() {
+            const btnText = document.getElementById('googleBtnText');
+            const spinner = document.getElementById('googleSpinner');
+            
+            btnText.innerText = "Connecting to Google...";
+            spinner.classList.remove('hidden');
+
+            try {
+                const result = await signInWithPopup(auth, provider);
+                const user = result.user;
+                
+                const userData = {
+                    username: user.email ? user.email.split('@')[0] : "google_user",
+                    fullName: user.displayName || "Google Candidate",
+                    email: user.email,
+                    photo: user.photoURL || "",
+                    lastLogin: new Date().toISOString()
+                };
+
+                await setDoc(doc(db, "users", userData.username), userData, { merge: true });
+                localStorage.setItem('intervai_current_user', JSON.stringify(userData));
+
+                showAlert(`Welcome, ${userData.fullName}! Redirecting...`, "success");
+                setTimeout(() => {
+                    window.location.href = "dashboard.html";
+                }, 1500);
+            } catch (error) {
+                console.error("Firebase Auth Error:", error);
+                btnText.innerText = "Continue with Google";
+                spinner.classList.add('hidden');
+                showAlert("Google Sign-In failed: " + error.message, "error");
+            }
+        };
+
+        window.dbRef = { db, doc, setDoc, getDoc };
+    </script>
+
+    <!-- UI Helper & Cloud Database Handlers -->
+    <script>
+        let currentMode = 'signin';
+
+        function switchTab(mode) {
+            currentMode = mode;
+            const tabSignin = document.getElementById('tabSignin');
+            const tabSignup = document.getElementById('tabSignup');
+            const nameFieldContainer = document.getElementById('nameFieldContainer');
+            const emailFieldContainer = document.getElementById('emailFieldContainer');
+            const captchaContainer = document.getElementById('captchaContainer');
+            const signinOptions = document.getElementById('signinOptions');
+            const submitBtnText = document.getElementById('submitBtnText');
+            hideAlert();
+
+            if (mode === 'signin') {
+                tabSignin.className = "flex-1 py-2.5 text-sm font-semibold rounded-lg transition-all duration-300 bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/20";
+                tabSignup.className = "flex-1 py-2.5 text-sm font-semibold rounded-lg transition-all duration-300 text-slate-400 hover:text-white";
+                nameFieldContainer.classList.add('hidden');
+                emailFieldContainer.classList.add('hidden');
+                captchaContainer.classList.add('hidden');
+                document.getElementById('fullName').required = false;
+                document.getElementById('email').required = false;
+                signinOptions.classList.remove('hidden');
+                submitBtnText.innerText = "Sign In to Dashboard";
+            } else {
+                tabSignup.className = "flex-1 py-2.5 text-sm font-semibold rounded-lg transition-all duration-300 bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/20";
+                tabSignin.className = "flex-1 py-2.5 text-sm font-semibold rounded-lg transition-all duration-300 text-slate-400 hover:text-white";
+                nameFieldContainer.classList.remove('hidden');
+                emailFieldContainer.classList.remove('hidden');
+                captchaContainer.classList.remove('hidden');
+                document.getElementById('fullName').required = true;
+                document.getElementById('email').required = true;
+                signinOptions.classList.add('hidden');
+                submitBtnText.innerText = "Create Account";
+            }
+        }
+
+        function togglePassword() {
+            const pwdInput = document.getElementById('password');
+            const eyeIcon = document.getElementById('eyeIcon');
+            if (pwdInput.type === 'password') {
+                pwdInput.type = 'text';
+                eyeIcon.className = "fa-solid fa-eye-slash";
+            } else {
+                pwdInput.type = 'password';
+                eyeIcon.className = "fa-solid fa-eye";
+            }
+        }
+
+        window.showAlert = function(message, type = 'success') {
+            const alertBox = document.getElementById('authAlert');
+            const alertMsg = document.getElementById('alertMessage');
+            const alertIcon = document.getElementById('alertIcon');
+
+            alertMsg.innerText = message;
+            alertBox.classList.remove('hidden');
+
+            if (type === 'success') {
+                alertBox.className = "mb-6 p-4 rounded-xl text-sm font-medium border bg-emerald-950/40 border-emerald-500/30 text-emerald-300 flex items-center gap-3";
+                alertIcon.className = "fa-solid fa-circle-check text-emerald-400 text-lg";
+            } else if (type === 'error') {
+                alertBox.className = "mb-6 p-4 rounded-xl text-sm font-medium border bg-rose-950/40 border-rose-500/30 text-rose-300 flex items-center gap-3";
+                alertIcon.className = "fa-solid fa-circle-exclamation text-rose-400 text-lg";
+            } else {
+                alertBox.className = "mb-6 p-4 rounded-xl text-sm font-medium border bg-cyan-950/40 border-cyan-500/30 text-cyan-300 flex items-center gap-3";
+                alertIcon.className = "fa-solid fa-circle-info text-cyan-400 text-lg";
+            }
+        }
+
+        function hideAlert() {
+            document.getElementById('authAlert').classList.add('hidden');
+        }
+
+        // Send Welcome Email using EmailJS service
+        function sendWelcomeEmail(fullName, userEmail) {
+            const templateParams = {
+                to_name: fullName,
+                to_email: userEmail,
+                message: `Hi ${fullName},\n\nWelcome to IntervAI! 🎉\nWe're excited to have you on board!\n\nPreparing for interviews can be challenging, but with IntervAI, you don't have to do it alone. Our AI-powered interview platform helps you practice real-world interview scenarios, improve your communication skills, and build the confidence you need to succeed.\n\nHere's what you can do with IntervAI:\n🎯 Practice mock interviews with AI-powered virtual interviewers.\n💬 Improve your communication and answering skills.\n📊 Get instant feedback on your interview performance.\n🚀 Identify your strengths and work on areas that need improvement.\n💡 Prepare for your next interview with greater confidence.\n\nWhether you're preparing for your first job interview or aiming for your next career opportunity, IntervAI is here to help you improve with every practice session.\n\nReady to get started?\nLog in to your IntervAI account and take your first step towards becoming interview-ready!\n\nWe're glad you're here, and we look forward to being part of your journey.\n\nBest regards,\nTeam IntervAI\nPractice Smarter. Interview Better. Succeed with Confidence.`
+            };
+
+            emailjs.send('service_93en4kh', 'template_rilq2id', templateParams)
+                .then(function(response) {
+                    console.log('Welcome email successfully sent!', response.status, response.text);
+                }, function(error) {
+                    console.error('Failed to send welcome email.', error);
+                });
+        }
+
+        // Manual Sign Up & Sign In with Cloud Firestore, reCAPTCHA, and Validations
+          async function handleAuthSubmit(event) {
+    event.preventDefault();
+    const username = document.getElementById('username').value.trim().toLowerCase();
+    const password = document.getElementById('password').value;
+    const fullName = document.getElementById('fullName').value.trim();
+    const email = document.getElementById('email').value.trim();
+    
+    const submitBtnText = document.getElementById('submitBtnText');
+    const submitSpinner = document.getElementById('submitSpinner');
+
+    // 1. Password Policy Validation (Only on Sign Up)
+    if (currentMode === 'signup') {
+        const passwordRegex = /^(?=.*[!@#$%^&*(),.?":{}|<>])[a-zA-Z0-9!@#$%^&*(),.?":{}|<>]{8,10}$/;
+        if (!passwordRegex.test(password)) {
+            showAlert("Password must be 8-10 characters long, alphanumeric, and contain at least 1 special character.", "error");
+            return;
+        }
+
+        // Verify reCAPTCHA on Sign Up mode
+        const recaptchaResponse = grecaptcha.getResponse();
+        if (recaptchaResponse.length === 0) {
+            showAlert("Please complete the reCAPTCHA verification.", "error");
+            return;
+        }
+    }
+
+    submitBtnText.innerText = currentMode === 'signup' ? "Checking Cloud..." : "Verifying Account...";
+    submitSpinner.classList.remove('hidden');
+
+    try {
+        const { db, doc, setDoc, getDoc } = window.dbRef;
+        const userDocRef = doc(db, "users", username);
+        const userSnapshot = await getDoc(userDocRef);
+
+        if (currentMode === 'signup') {
+            // 2. Check if Username Already Exists
+            if (userSnapshot.exists()) {
+                showAlert("This username already exists! Please choose another one or sign in.", "error");
+                submitBtnText.innerText = "Create Account";
+                submitSpinner.classList.add('hidden');
+                grecaptcha.reset();
+                return;
+            }
+
+            const newUser = {
+                username,
+                fullName,
+                email,
+                password, 
+                createdAt: new Date().toISOString()
+            };
+
+            await setDoc(userDocRef, newUser);
+            localStorage.setItem('intervai_current_user', JSON.stringify({ username, fullName, email }));
+            
+            // Trigger Welcome Email
+            sendWelcomeEmail(fullName, email);
+
+            showAlert("Account created & welcome email sent successfully!", "success");
+            setTimeout(() => {
+                window.location.href = "dashboard.html"; // Redirects to Dashboard
+            }, 1500);
+
+        } else {
+            if (!userSnapshot.exists()) {
+                showAlert("Account not found in cloud. Please sign up first.", "error");
+                submitBtnText.innerText = "Sign In to Dashboard";
+                submitSpinner.classList.add('hidden');
+                return;
+            }
+
+            const userData = userSnapshot.data();
+            if (userData.password !== password) {
+                showAlert("Incorrect password. Please try again.", "error");
+                submitBtnText.innerText = "Sign In to Dashboard";
+                submitSpinner.classList.add('hidden');
+                return;
+            }
+
+            localStorage.setItem('intervai_current_user', JSON.stringify({ 
+                username: userData.username, 
+                fullName: userData.fullName,
+                email: userData.email 
+            }));
+
+            showAlert(`Welcome back, ${userData.fullName}!`, "success");
+            setTimeout(() => {
+                window.location.href = "dashboard.html"; // Redirects to Dashboard
+            }, 1500);
+        }
+    } catch (error) {
+        console.error("Database Error:", error);
+        showAlert("Database operation failed: " + error.message, "error");
+        submitBtnText.innerText = currentMode === 'signup' ? "Create Account" : "Sign In to Dashboard";
+        submitSpinner.classList.add('hidden');
+        if(currentMode === 'signup') grecaptcha.reset();
+    }
+          }</script>
+</body>
+</html>
