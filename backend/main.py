@@ -12,7 +12,7 @@ import json
 load_dotenv()
 
 app = FastAPI(title="intervAI Enterprise Gemini Backend Engine", version="3.1.0")
-
+app.mount("/", StaticFiles(directory="static", html=True), name="static")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
