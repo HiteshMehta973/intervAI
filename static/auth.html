@@ -55,7 +55,7 @@
         }
     </style>
 </head>
-<body class="bg-dark text-slate-100 min-h-screen flex items-center justify-center relative overflow-hidden">
+<body class="bg-dark text-slate-100 min-h-screen flex flex-col items-center justify-center relative overflow-y-auto py-10 px-4">
 
     <!-- 4D Interactive Canvas Background -->
     <canvas id="bgCanvas"></canvas>
@@ -65,10 +65,10 @@
     <div class="absolute -bottom-40 -right-40 w-96 h-96 bg-neonBlue/15 rounded-full blur-[140px] pointer-events-none z-0"></div>
 
     <!-- Main Auth Container -->
-    <div class="relative z-10 w-full max-w-md mx-4 my-8">
+    <div class="relative z-10 w-full max-w-md my-auto">
         
         <!-- Logo / Brand Header -->
-        <div class="text-center mb-8">
+        <div class="text-center mb-6">
             <a href="index.html" class="inline-flex items-center gap-3 group">
                 <div class="w-12 h-12 rounded-2xl bg-gradient-to-tr from-cyan-500 via-blue-600 to-indigo-600 flex items-center justify-center glow-effect group-hover:scale-110 transition-transform duration-300">
                     <i class="fa-solid fa-brain text-white text-xl"></i>
@@ -82,7 +82,7 @@
         <div class="glass-card rounded-3xl p-8 glow-effect">
             
             <!-- Tab Switcher -->
-            <div class="flex rounded-xl bg-slate-950/80 p-1.5 mb-8 border border-slate-800/80">
+            <div class="flex rounded-xl bg-slate-950/80 p-1.5 mb-6 border border-slate-800/80">
                 <button type="button" id="tabSignin" onclick="switchTab('signin')" class="flex-1 py-2.5 text-sm font-semibold rounded-lg transition-all duration-300 bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/20">Sign In</button>
                 <button type="button" id="tabSignup" onclick="switchTab('signup')" class="flex-1 py-2.5 text-sm font-semibold rounded-lg transition-all duration-300 text-slate-400 hover:text-white">Sign Up</button>
             </div>
@@ -94,58 +94,55 @@
             </div>
 
             <!-- Form -->
-            <form id="authForm" onsubmit="handleAuthSubmit(event)" class="space-y-4">
+            <form id="authForm" onsubmit="handleAuthSubmit(event)" class="space-y-3.5">
                 
                 <!-- Full Name Field (Sign Up Only) -->
-                <div id="nameFieldContainer" class="space-y-1.5 hidden transition-all duration-300">
+                <div id="nameFieldContainer" class="space-y-1 hidden transition-all duration-300">
                     <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider">Full Name</label>
                     <div class="relative">
                         <span class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-500">
                             <i class="fa-solid fa-user"></i>
                         </span>
-                        <input type="text" id="fullName" placeholder="John Doe" class="w-full bg-slate-950/60 border border-slate-700/60 rounded-xl px-4 py-3 pl-11 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/20 transition-all">
+                        <input type="text" id="fullName" placeholder="John Doe" class="w-full bg-slate-950/60 border border-slate-700/60 rounded-xl px-4 py-2.5 pl-11 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/20 transition-all">
                     </div>
                 </div>
 
                 <!-- Email Field (Sign Up Only) -->
-                <div id="emailFieldContainer" class="space-y-1.5 hidden transition-all duration-300">
+                <div id="emailFieldContainer" class="space-y-1 hidden transition-all duration-300">
                     <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider">Email Address</label>
                     <div class="relative">
                         <span class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-500">
                             <i class="fa-solid fa-envelope"></i>
                         </span>
-                        <input type="email" id="email" placeholder="john@example.com" class="w-full bg-slate-950/60 border border-slate-700/60 rounded-xl px-4 py-3 pl-11 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/20 transition-all">
+                        <input type="email" id="email" placeholder="john@example.com" class="w-full bg-slate-950/60 border border-slate-700/60 rounded-xl px-4 py-2.5 pl-11 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/20 transition-all">
                     </div>
                 </div>
 
                 <!-- Username Field -->
-                <div class="space-y-1.5">
+                <div class="space-y-1">
                     <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider">Username</label>
                     <div class="relative">
                         <span class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-500">
                             <i class="fa-solid fa-at"></i>
                         </span>
-                        <input type="text" id="username" required placeholder="your_username" class="w-full bg-slate-950/60 border border-slate-700/60 rounded-xl px-4 py-3 pl-11 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/20 transition-all">
+                        <input type="text" id="username" required placeholder="your_username" class="w-full bg-slate-950/60 border border-slate-700/60 rounded-xl px-4 py-2.5 pl-11 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/20 transition-all">
                     </div>
                 </div>
 
                 <!-- Password Field -->
-                <div class="space-y-1.5">
+                <div class="space-y-1">
                     <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider">Password</label>
                     <div class="relative">
                         <span class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-500">
                             <i class="fa-solid fa-lock"></i>
                         </span>
-                        <input type="password" id="password" required placeholder="8-10 chars, 1 special char" class="w-full bg-slate-950/60 border border-slate-700/60 rounded-xl px-4 py-3 pl-11 pr-11 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/20 transition-all">
+                        <input type="password" id="password" required placeholder="8-10 chars, 1 special char" class="w-full bg-slate-950/60 border border-slate-700/60 rounded-xl px-4 py-2.5 pl-11 pr-11 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/20 transition-all">
                         <button type="button" onclick="togglePassword()" class="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-500 hover:text-slate-300">
                             <i id="eyeIcon" class="fa-solid fa-eye"></i>
                         </button>
                     </div>
-                    <p class="text-[11px] text-slate-400 pl-1">Must be 8-10 chars, alphanumeric with at least 1 special character.</p>
+                    <p class="text-[10px] text-slate-400 pl-1">8-10 chars, alphanumeric with at least 1 special char.</p>
                 </div>
-
-                <!-- Google reCAPTCHA Widget (Sign Up Only) - Explicitly Rendered -->
-                
 
                 <!-- Remember Me & Forgot Password (Sign In Only) -->
                 <div id="signinOptions" class="flex items-center justify-between text-xs text-slate-400 pt-1">
@@ -155,25 +152,27 @@
                     </label>
                     <a href="#" onclick="showAlert('Password reset instructions sent to your registered details.', 'info')" class="hover:text-cyan-400 transition-colors">Forgot password?</a>
                 </div>
-                <div id="captchaWidgetContainer" class="hidden pt-1 flex justify-center">
+
+                <!-- Google reCAPTCHA Widget (Sign Up Only) - Explicitly Rendered -->
+                <div id="captchaWidgetContainer" class="hidden pt-1 flex justify-center scale-90 origin-center">
                     <div id="recaptchaContainer"></div>
                 </div>
 
                 <!-- Submit Button -->
-                <button type="submit" id="submitBtn" class="w-full py-3.5 rounded-xl bg-gradient-to-r from-cyan-500 via-blue-500 to-indigo-600 text-white font-bold text-sm shadow-xl shadow-cyan-500/25 hover:shadow-cyan-500/40 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer mt-2">
+                <button type="submit" id="submitBtn" class="w-full py-3 rounded-xl bg-gradient-to-r from-cyan-500 via-blue-500 to-indigo-600 text-white font-bold text-sm shadow-xl shadow-cyan-500/25 hover:shadow-cyan-500/40 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer mt-3">
                     <span id="submitBtnText">Sign In to Dashboard</span>
                     <i id="submitSpinner" class="fa-solid fa-circle-notch fa-spin hidden"></i>
                 </button>
             </form>
 
             <!-- Divider -->
-            <div class="relative my-6">
+            <div class="relative my-5">
                 <div class="absolute inset-0 flex items-center"><div class="w-full border-t border-slate-800/80"></div></div>
                 <div class="relative flex justify-center text-xs uppercase"><span class="bg-card px-4 text-slate-500 font-semibold tracking-wider">Or continue with</span></div>
             </div>
 
             <!-- Real Google OAuth Button -->
-            <button type="button" id="googleBtn" onclick="handleGoogleLogin()" class="w-full py-3 px-4 rounded-xl bg-slate-950/90 border border-slate-700/60 hover:border-cyan-500/60 text-slate-200 font-semibold text-sm flex items-center justify-center gap-3 hover:bg-slate-900 transition-all group cursor-pointer shadow-lg">
+            <button type="button" id="googleBtn" onclick="handleGoogleLogin()" class="w-full py-2.5 px-4 rounded-xl bg-slate-950/90 border border-slate-700/60 hover:border-cyan-500/60 text-slate-200 font-semibold text-sm flex items-center justify-center gap-3 hover:bg-slate-900 transition-all group cursor-pointer shadow-lg">
                 <svg class="w-5 h-5 group-hover:scale-110 transition-transform" viewBox="0 0 24 24">
                     <path fill="#EA4335" d="M12 5c1.6 0 3 .6 4.1 1.6l3.1-3.1C17.3 1.8 14.8 1 12 1 7.5 1 3.7 3.6 1.9 7.4l3.7 2.9C6.5 7.3 9 5 12 5z"/>
                     <path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.5c-.3 1.5-1.1 2.8-2.4 3.7l3.7 2.9c2.2-2 3.7-5 3.7-8.8z"/>
@@ -187,7 +186,7 @@
         </div>
 
         <!-- Footer Back Link -->
-        <div class="text-center mt-6">
+        <div class="text-center mt-4">
             <a href="index.html" class="text-xs text-slate-400 hover:text-cyan-400 transition-colors inline-flex items-center gap-2 font-semibold">
                 <i class="fa-solid fa-arrow-left"></i> Back to Home
             </a>
@@ -388,14 +387,14 @@
             alertBox.classList.remove('hidden');
 
             if (type === 'success') {
-                alertBox.className = "mb-6 p-4 rounded-xl text-sm font-medium border bg-emerald-950/40 border-emerald-500/30 text-emerald-300 flex items-center gap-3";
-                alertIcon.className = "fa-solid fa-circle-check text-emerald-400 text-lg";
+                alertBox.className = "mb-4 p-3 rounded-xl text-xs font-medium border bg-emerald-950/40 border-emerald-500/30 text-emerald-300 flex items-center gap-3";
+                alertIcon.className = "fa-solid fa-circle-check text-emerald-400 text-base";
             } else if (type === 'error') {
-                alertBox.className = "mb-6 p-4 rounded-xl text-sm font-medium border bg-rose-950/40 border-rose-500/30 text-rose-300 flex items-center gap-3";
-                alertIcon.className = "fa-solid fa-circle-exclamation text-rose-400 text-lg";
+                alertBox.className = "mb-4 p-3 rounded-xl text-xs font-medium border bg-rose-950/40 border-rose-500/30 text-rose-300 flex items-center gap-3";
+                alertIcon.className = "fa-solid fa-circle-exclamation text-rose-400 text-base";
             } else {
-                alertBox.className = "mb-6 p-4 rounded-xl text-sm font-medium border bg-cyan-950/40 border-cyan-500/30 text-cyan-300 flex items-center gap-3";
-                alertIcon.className = "fa-solid fa-circle-info text-cyan-400 text-lg";
+                alertBox.className = "mb-4 p-3 rounded-xl text-xs font-medium border bg-cyan-950/40 border-cyan-500/30 text-cyan-300 flex items-center gap-3";
+                alertIcon.className = "fa-solid fa-circle-info text-cyan-400 text-base";
             }
         }
 
