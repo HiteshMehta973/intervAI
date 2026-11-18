@@ -144,9 +144,9 @@
                     <p class="text-[11px] text-slate-400 pl-1">Must be 8-10 chars, alphanumeric with at least 1 special character.</p>
                 </div>
 
-                <!-- Google reCAPTCHA Widget (Sign Up Only) -->
-                <div id="captchaContainer" class="hidden pt-1 flex justify-center">
-                    <div class="g-recaptcha" data-sitekey="6Ld8NwMuAAAAAMaE61BOmfxx8_lkamzD_2tAm_Gi" data-theme="dark"></div>
+                <!-- Google reCAPTCHA Widget (Sign Up Only) - Explicitly Rendered -->
+                <div id="captchaWidgetContainer" class="hidden pt-1 flex justify-center">
+                    <div id="recaptchaContainer"></div>
                 </div>
 
                 <!-- Remember Me & Forgot Password (Sign In Only) -->
@@ -316,6 +316,7 @@
     <!-- UI Helper & Cloud Database Handlers -->
     <script>
         let currentMode = 'signin';
+        let recaptchaWidgetId = null;
 
         function switchTab(mode) {
             currentMode = mode;
@@ -323,7 +324,7 @@
             const tabSignup = document.getElementById('tabSignup');
             const nameFieldContainer = document.getElementById('nameFieldContainer');
             const emailFieldContainer = document.getElementById('emailFieldContainer');
-            const captchaContainer = document.getElementById('captchaContainer');
+            const captchaWidgetContainer = document.getElementById('captchaWidgetContainer');
             const signinOptions = document.getElementById('signinOptions');
             const submitBtnText = document.getElementById('submitBtnText');
             hideAlert();
@@ -333,7 +334,7 @@
                 tabSignup.className = "flex-1 py-2.5 text-sm font-semibold rounded-lg transition-all duration-300 text-slate-400 hover:text-white";
                 nameFieldContainer.classList.add('hidden');
                 emailFieldContainer.classList.add('hidden');
-                captchaContainer.classList.add('hidden');
+                captchaWidgetContainer.classList.add('hidden');
                 document.getElementById('fullName').required = false;
                 document.getElementById('email').required = false;
                 signinOptions.classList.remove('hidden');
@@ -343,11 +344,25 @@
                 tabSignin.className = "flex-1 py-2.5 text-sm font-semibold rounded-lg transition-all duration-300 text-slate-400 hover:text-white";
                 nameFieldContainer.classList.remove('hidden');
                 emailFieldContainer.classList.remove('hidden');
-                captchaContainer.classList.remove('hidden');
+                captchaWidgetContainer.classList.remove('hidden');
                 document.getElementById('fullName').required = true;
                 document.getElementById('email').required = true;
                 signinOptions.classList.add('hidden');
                 submitBtnText.innerText = "Create Account";
+
+                // Explicitly render reCAPTCHA when switching to Sign Up tab
+                setTimeout(() => {
+                    if (window.grecaptcha && recaptchaWidgetId === null) {
+                        try {
+                            recaptchaWidgetId = grecaptcha.render('recaptchaContainer', {
+                                'sitekey': '6Ld8NwMuAAAAAMaE61BOmfxx8_lkamzD_2tAm_Gi',
+                                'theme': 'dark'
+                            });
+                        } catch (e) {
+                            console.log("reCAPTCHA render error:", e);
+                        }
+                    }
+                }, 100);
             }
         }
 
@@ -404,103 +419,104 @@
         }
 
         // Manual Sign Up & Sign In with Cloud Firestore, reCAPTCHA, and Validations
-          async function handleAuthSubmit(event) {
-    event.preventDefault();
-    const username = document.getElementById('username').value.trim().toLowerCase();
-    const password = document.getElementById('password').value;
-    const fullName = document.getElementById('fullName').value.trim();
-    const email = document.getElementById('email').value.trim();
-    
-    const submitBtnText = document.getElementById('submitBtnText');
-    const submitSpinner = document.getElementById('submitSpinner');
-
-    // 1. Password Policy Validation (Only on Sign Up)
-    if (currentMode === 'signup') {
-        const passwordRegex = /^(?=.*[!@#$%^&*(),.?":{}|<>])[a-zA-Z0-9!@#$%^&*(),.?":{}|<>]{8,10}$/;
-        if (!passwordRegex.test(password)) {
-            showAlert("Password must be 8-10 characters long, alphanumeric, and contain at least 1 special character.", "error");
-            return;
-        }
-
-        // Verify reCAPTCHA on Sign Up mode
-        const recaptchaResponse = grecaptcha.getResponse();
-        if (recaptchaResponse.length === 0) {
-            showAlert("Please complete the reCAPTCHA verification.", "error");
-            return;
-        }
-    }
-
-    submitBtnText.innerText = currentMode === 'signup' ? "Checking Cloud..." : "Verifying Account...";
-    submitSpinner.classList.remove('hidden');
-
-    try {
-        const { db, doc, setDoc, getDoc } = window.dbRef;
-        const userDocRef = doc(db, "users", username);
-        const userSnapshot = await getDoc(userDocRef);
-
-        if (currentMode === 'signup') {
-            // 2. Check if Username Already Exists
-            if (userSnapshot.exists()) {
-                showAlert("This username already exists! Please choose another one or sign in.", "error");
-                submitBtnText.innerText = "Create Account";
-                submitSpinner.classList.add('hidden');
-                grecaptcha.reset();
-                return;
-            }
-
-            const newUser = {
-                username,
-                fullName,
-                email,
-                password, 
-                createdAt: new Date().toISOString()
-            };
-
-            await setDoc(userDocRef, newUser);
-            localStorage.setItem('intervai_current_user', JSON.stringify({ username, fullName, email }));
+        async function handleAuthSubmit(event) {
+            event.preventDefault();
+            const username = document.getElementById('username').value.trim().toLowerCase();
+            const password = document.getElementById('password').value;
+            const fullName = document.getElementById('fullName').value.trim();
+            const email = document.getElementById('email').value.trim();
             
-            // Trigger Welcome Email
-            sendWelcomeEmail(fullName, email);
+            const submitBtnText = document.getElementById('submitBtnText');
+            const submitSpinner = document.getElementById('submitSpinner');
 
-            showAlert("Account created & welcome email sent successfully!", "success");
-            setTimeout(() => {
-                window.location.href = "dashboard.html"; // Redirects to Dashboard
-            }, 1500);
+            // 1. Password Policy Validation (Only on Sign Up)
+            if (currentMode === 'signup') {
+                const passwordRegex = /^(?=.*[!@#$%^&*(),.?":{}|<>])[a-zA-Z0-9!@#$%^&*(),.?":{}|<>]{8,10}$/;
+                if (!passwordRegex.test(password)) {
+                    showAlert("Password must be 8-10 characters long, alphanumeric, and contain at least 1 special character.", "error");
+                    return;
+                }
 
-        } else {
-            if (!userSnapshot.exists()) {
-                showAlert("Account not found in cloud. Please sign up first.", "error");
-                submitBtnText.innerText = "Sign In to Dashboard";
-                submitSpinner.classList.add('hidden');
-                return;
+                // Verify reCAPTCHA on Sign Up mode using widget ID
+                const recaptchaResponse = recaptchaWidgetId !== null ? grecaptcha.getResponse(recaptchaWidgetId) : grecaptcha.getResponse();
+                if (!recaptchaResponse || recaptchaResponse.length === 0) {
+                    showAlert("Please complete the reCAPTCHA verification.", "error");
+                    return;
+                }
             }
 
-            const userData = userSnapshot.data();
-            if (userData.password !== password) {
-                showAlert("Incorrect password. Please try again.", "error");
-                submitBtnText.innerText = "Sign In to Dashboard";
+            submitBtnText.innerText = currentMode === 'signup' ? "Checking Cloud..." : "Verifying Account...";
+            submitSpinner.classList.remove('hidden');
+
+            try {
+                const { db, doc, setDoc, getDoc } = window.dbRef;
+                const userDocRef = doc(db, "users", username);
+                const userSnapshot = await getDoc(userDocRef);
+
+                if (currentMode === 'signup') {
+                    // 2. Check if Username Already Exists
+                    if (userSnapshot.exists()) {
+                        showAlert("This username already exists! Please choose another one or sign in.", "error");
+                        submitBtnText.innerText = "Create Account";
+                        submitSpinner.classList.add('hidden');
+                        if (recaptchaWidgetId !== null) grecaptcha.reset(recaptchaWidgetId);
+                        return;
+                    }
+
+                    const newUser = {
+                        username,
+                        fullName,
+                        email,
+                        password, 
+                        createdAt: new Date().toISOString()
+                    };
+
+                    await setDoc(userDocRef, newUser);
+                    localStorage.setItem('intervai_current_user', JSON.stringify({ username, fullName, email }));
+                    
+                    // Trigger Welcome Email
+                    sendWelcomeEmail(fullName, email);
+
+                    showAlert("Account created & welcome email sent successfully!", "success");
+                    setTimeout(() => {
+                        window.location.href = "dashboard.html"; // Redirects to Dashboard
+                    }, 1500);
+
+                } else {
+                    if (!userSnapshot.exists()) {
+                        showAlert("Account not found in cloud. Please sign up first.", "error");
+                        submitBtnText.innerText = "Sign In to Dashboard";
+                        submitSpinner.classList.add('hidden');
+                        return;
+                    }
+
+                    const userData = userSnapshot.data();
+                    if (userData.password !== password) {
+                        showAlert("Incorrect password. Please try again.", "error");
+                        submitBtnText.innerText = "Sign In to Dashboard";
+                        submitSpinner.classList.add('hidden');
+                        return;
+                    }
+
+                    localStorage.setItem('intervai_current_user', JSON.stringify({ 
+                        username: userData.username, 
+                        fullName: userData.fullName,
+                        email: userData.email 
+                    }));
+
+                    showAlert(`Welcome back, ${userData.fullName}!`, "success");
+                    setTimeout(() => {
+                        window.location.href = "dashboard.html"; // Redirects to Dashboard
+                    }, 1500);
+                }
+            } catch (error) {
+                console.error("Database Error:", error);
+                showAlert("Database operation failed: " + error.message, "error");
+                submitBtnText.innerText = currentMode === 'signup' ? "Create Account" : "Sign In to Dashboard";
                 submitSpinner.classList.add('hidden');
-                return;
+                if (currentMode === 'signup' && recaptchaWidgetId !== null) grecaptcha.reset(recaptchaWidgetId);
             }
-
-            localStorage.setItem('intervai_current_user', JSON.stringify({ 
-                username: userData.username, 
-                fullName: userData.fullName,
-                email: userData.email 
-            }));
-
-            showAlert(`Welcome back, ${userData.fullName}!`, "success");
-            setTimeout(() => {
-                window.location.href = "dashboard.html"; // Redirects to Dashboard
-            }, 1500);
         }
-    } catch (error) {
-        console.error("Database Error:", error);
-        showAlert("Database operation failed: " + error.message, "error");
-        submitBtnText.innerText = currentMode === 'signup' ? "Create Account" : "Sign In to Dashboard";
-        submitSpinner.classList.add('hidden');
-        if(currentMode === 'signup') grecaptcha.reset();
-    }
-          }</script>
+    </script>
 </body>
 </html>

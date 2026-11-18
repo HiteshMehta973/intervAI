@@ -50,7 +50,7 @@ class SandboxEvaluationRequest(BaseModel):
     question: str
     answer: str
 
-
+    
 @app.get("/api/health")
 def read_root():
     return {"status": "online", "message": "intervAI Secure Gemini Adaptive Backend is running."}
