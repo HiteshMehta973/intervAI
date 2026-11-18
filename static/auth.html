@@ -431,7 +431,7 @@
 
             // 1. Password Policy Validation (Only on Sign Up)
             if (currentMode === 'signup') {
-                const passwordRegex = /^(?=.*[!@#$%^&*(),.?":{}|<>])[a-zA-Z0-9!@#$%^&*(),.?":{}|<>]{8,10}$/;
+              const passwordRegex = /^(?=.*[!@#$%^&*(),.?":{}|<>])[a-zA-Z0-9!@#$%^&*(),.?":{}|<>]{8,15}$/;
                 if (!passwordRegex.test(password)) {
                     showAlert("Password must be 8-10 characters long, alphanumeric, and contain at least 1 special character.", "error");
                     return;
