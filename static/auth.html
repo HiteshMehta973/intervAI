@@ -257,7 +257,14 @@
     <!-- Firebase Auth & Cloud Firestore Script -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-        import { getAuth, signInWithPopup, GoogleAuthProvider, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+        import {
+            getAuth,
+            signInWithPopup,
+            GoogleAuthProvider,
+            sendPasswordResetEmail,
+            createUserWithEmailAndPassword,
+            signInWithEmailAndPassword
+        } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
         import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
         const firebaseConfig = {
@@ -310,22 +317,46 @@
             }
         };
 
-        // Real Firebase Password Reset Handler
+        // Real Firebase Password Reset Handler (Lookup via Username or Email Input)
         window.handleForgotPassword = async function() {
-            const emailInput = document.getElementById('email').value.trim();
-            if (!emailInput) {
-                showAlert("Please enter your email address in the Email field above first.", "error");
+            let targetEmail = document.getElementById('email').value.trim();
+            const usernameVal = document.getElementById('username').value.trim().toLowerCase();
+
+            // Fetch registered email from Firestore if username is entered in Sign In tab
+            if (!targetEmail && usernameVal) {
+                try {
+                    const userSnap = await getDoc(doc(db, "users", usernameVal));
+                    if (userSnap.exists() && userSnap.data().email) {
+                        targetEmail = userSnap.data().email.trim();
+                    }
+                } catch (err) {
+                    console.warn("Firestore email lookup error:", err);
+                }
+            }
+
+            // Fallback prompt if neither email nor valid username is provided
+            if (!targetEmail) {
+                targetEmail = (prompt("Enter your registered email address to receive a password reset link:") || "").trim();
+            }
+
+            if (!targetEmail) {
+                showAlert("Please enter your registered email or username first.", "error");
                 return;
             }
+
             try {
-                await sendPasswordResetEmail(auth, emailInput);
-                showAlert("Password reset link sent to " + emailInput + "! Check your inbox.", "success");
+                await sendPasswordResetEmail(auth, targetEmail, {
+                    url: "https://intervai-kcml.onrender.com/auth.html",
+                    handleCodeInApp: false
+                });
+                showAlert("Password reset link sent to " + targetEmail + "! Open the latest email link directly in a new tab.", "success");
             } catch (error) {
                 console.error("Password Reset Error:", error);
                 showAlert("Failed to send reset email: " + error.message, "error");
             }
         };
 
+        window.authRef = { auth, createUserWithEmailAndPassword, signInWithEmailAndPassword };
         window.dbRef = { db, doc, setDoc, getDoc };
     </script>
 
@@ -434,7 +465,7 @@
                 });
         }
 
-        // Manual Sign Up & Sign In with Cloud Firestore, reCAPTCHA, and Validations
+        // Manual Sign Up & Sign In synced with Firebase Auth + Cloud Firestore
         async function handleAuthSubmit(event) {
             event.preventDefault();
             const username = document.getElementById('username').value.trim().toLowerCase();
@@ -461,11 +492,12 @@
                 }
             }
 
-            submitBtnText.innerText = currentMode === 'signup' ? "Checking Cloud..." : "Verifying Account...";
+            submitBtnText.innerText = currentMode === 'signup' ? "Creating Account..." : "Verifying Account...";
             submitSpinner.classList.remove('hidden');
 
             try {
                 const { db, doc, setDoc, getDoc } = window.dbRef;
+                const { auth, createUserWithEmailAndPassword, signInWithEmailAndPassword } = window.authRef;
                 const userDocRef = doc(db, "users", username);
                 const userSnapshot = await getDoc(userDocRef);
 
@@ -479,11 +511,14 @@
                         return;
                     }
 
+                    // 3. Register user in Firebase Auth so password reset & auth work natively
+                    const userCred = await createUserWithEmailAndPassword(auth, email, password);
+
                     const newUser = {
+                        uid: userCred.user.uid,
                         username,
                         fullName,
                         email,
-                        password, 
                         createdAt: new Date().toISOString()
                     };
 
@@ -495,7 +530,7 @@
 
                     showAlert("Account created & welcome email sent successfully!", "success");
                     setTimeout(() => {
-                        window.location.href = "dashboard.html"; // Redirects to Dashboard
+                        window.location.href = "dashboard.html";
                     }, 1500);
 
                 } else {
@@ -507,12 +542,9 @@
                     }
 
                     const userData = userSnapshot.data();
-                    if (userData.password !== password) {
-                        showAlert("Incorrect password. Please try again.", "error");
-                        submitBtnText.innerText = "Sign In to Dashboard";
-                        submitSpinner.classList.add('hidden');
-                        return;
-                    }
+
+                    // Authenticate via Firebase Auth using the email mapped to this username
+                    await signInWithEmailAndPassword(auth, userData.email, password);
 
                     localStorage.setItem('intervai_current_user', JSON.stringify({ 
                         username: userData.username, 
@@ -522,12 +554,18 @@
 
                     showAlert(`Welcome back, ${userData.fullName}!`, "success");
                     setTimeout(() => {
-                        window.location.href = "dashboard.html"; // Redirects to Dashboard
+                        window.location.href = "dashboard.html";
                     }, 1500);
                 }
             } catch (error) {
-                console.error("Database Error:", error);
-                showAlert("Database operation failed: " + error.message, "error");
+                console.error("Auth/Database Error:", error);
+                let friendlyMsg = error.message;
+                if (error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
+                    friendlyMsg = "Incorrect password. Please try again or reset your password.";
+                } else if (error.code === 'auth/email-already-in-use') {
+                    friendlyMsg = "This email is already registered. Please sign in or reset your password.";
+                }
+                showAlert(friendlyMsg, "error");
                 submitBtnText.innerText = currentMode === 'signup' ? "Create Account" : "Sign In to Dashboard";
                 submitSpinner.classList.add('hidden');
                 if (currentMode === 'signup' && recaptchaWidgetId !== null) grecaptcha.reset(recaptchaWidgetId);
