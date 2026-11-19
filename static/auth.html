@@ -295,7 +295,7 @@
             GoogleAuthProvider
         } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
         import {
-            getFirestore,
+            initializeFirestore,
             doc,
             setDoc,
             getDoc,
@@ -315,7 +315,7 @@
 
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
-        const db = getFirestore(app);
+        const db = initializeFirestore(app, { experimentalForceLongPolling: true });
         const provider = new GoogleAuthProvider();
 
         let generatedOtp = null;
@@ -405,7 +405,7 @@
 
                 document.getElementById('otpStep1').classList.add('hidden');
                 document.getElementById('otpStep2').classList.remove('hidden');
-                showAlert(`6-digit OTP sent to ${targetEmail} (Account: ${resetTargetDocId})!`, "success");
+                showAlert(`OTP sent to ${targetEmail} for username "${resetTargetDocId}"!`, "success");
             } catch (error) {
                 console.error("OTP Error:", error);
                 showAlert("Failed to send OTP: " + (error.text || error.message), "error");
@@ -456,9 +456,10 @@
 
                 const checkSnap = await getDoc(docRef);
                 if (!checkSnap.exists() || checkSnap.data().password !== newPwd) {
-                    throw new Error("Firestore write did not update password field for doc: " + resetTargetDocId);
+                    throw new Error("Database write did not save for: " + resetTargetDocId);
                 }
 
+                const updatedUser = resetTargetDocId;
                 generatedOtp = null;
                 resetTargetDocId = null;
                 document.getElementById('otpCodeInput').value = "";
@@ -466,10 +467,10 @@
                 document.getElementById('resetEmailInput').value = "";
                 toggleForgotBox(false);
 
-                showAlert("Password updated in cloud! Now sign in with your new password.", "success");
+                showAlert(`Password updated for "${updatedUser}"! Sign in with your new password now.`, "success");
             } catch (error) {
                 console.error("Password Update Verification Error:", error);
-                showAlert("Password update failed: " + error.message, "error");
+                showAlert("Update failed: " + error.message, "error");
             } finally {
                 confirmBtn.innerText = "Verify OTP & Update Password";
                 confirmBtn.disabled = false;
