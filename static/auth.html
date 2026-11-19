@@ -299,6 +299,7 @@
             doc,
             setDoc,
             getDoc,
+            updateDoc,
             collection,
             query,
             where,
@@ -390,12 +391,12 @@
                 generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
                 otpExpiryTime = Date.now() + 10 * 60 * 1000;
 
-                await emailjs.send('service_93en4kh', 'template_tv0qjff', {
-                    to_name: userName,
-                    to_email: targetEmail,
-                    email: targetEmail,
-                    otp_code: generatedOtp
-                });
+               await emailjs.send('service_93en4kh', 'template_tv0qjff', {
+                        to_name: userName,
+                        to_email: targetEmail,
+                        email: targetEmail,
+                        otp_code: generatedOtp
+                    });
 
                 document.getElementById('otpStep1').classList.add('hidden');
                 document.getElementById('otpStep2').classList.remove('hidden');
@@ -409,10 +410,10 @@
             }
         };
 
-        // Step 2: Verify OTP & Update Password in Firestore with Verification
+        // Step 2: Verify OTP & Update Password in Firestore
         window.verifyOtpAndReset = async function() {
             const enteredOtp = document.getElementById('otpCodeInput').value.trim();
-            const newPwd = document.getElementById('newResetPassword').value.trim();
+            const newPwd = document.getElementById('newResetPassword').value;
             const confirmBtn = document.getElementById('confirmOtpBtn');
 
             if (!generatedOtp || Date.now() > otpExpiryTime) {
@@ -433,25 +434,14 @@
                 return;
             }
 
-            if (!resetTargetDocId) {
-                showAlert("User document reference missing. Please request OTP again.", "error");
-                return;
-            }
-
             confirmBtn.innerText = "Updating Password...";
             confirmBtn.disabled = true;
 
             try {
-                const docRef = doc(db, "users", resetTargetDocId);
-                await setDoc(docRef, {
+                await updateDoc(doc(db, "users", resetTargetDocId), {
                     password: newPwd,
                     updatedAt: new Date().toISOString()
-                }, { merge: true });
-
-                const checkSnap = await getDoc(docRef);
-                if (!checkSnap.exists() || checkSnap.data().password !== newPwd) {
-                    throw new Error("Firestore write did not update password field for doc: " + resetTargetDocId);
-                }
+                });
 
                 generatedOtp = null;
                 resetTargetDocId = null;
@@ -460,10 +450,10 @@
                 document.getElementById('resetEmailInput').value = "";
                 toggleForgotBox(false);
 
-                showAlert("Password updated in cloud! Now sign in with your new password.", "success");
+                showAlert("Password updated successfully! You can now Sign In with your new password.", "success");
             } catch (error) {
-                console.error("Password Update Verification Error:", error);
-                showAlert("Password update failed: " + error.message, "error");
+                console.error("Update Error:", error);
+                showAlert("Failed to update password: " + error.message, "error");
             } finally {
                 confirmBtn.innerText = "Verify OTP & Update Password";
                 confirmBtn.disabled = false;
