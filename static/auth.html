@@ -153,23 +153,36 @@
                     <a href="#" onclick="toggleForgotBox(true); return false;" class="hover:text-cyan-400 transition-colors">Forgot password?</a>
                 </div>
 
-                <!-- Inline Forgot Password Box (Sign In Page Only) -->
-                <div id="forgotPasswordBox" class="hidden p-3.5 rounded-xl bg-slate-950/80 border border-cyan-500/30 space-y-2.5 transition-all">
+                <!-- Inline OTP Password Reset Box (Sign In Page Only) -->
+                <div id="forgotPasswordBox" class="hidden p-3.5 rounded-xl bg-slate-950/90 border border-cyan-500/40 space-y-2.5 transition-all">
                     <div class="flex items-center justify-between">
-                        <span class="text-xs font-semibold text-cyan-400">Reset Your Password</span>
+                        <span class="text-xs font-semibold text-cyan-400">Reset Password via 6-Digit OTP</span>
                         <button type="button" onclick="toggleForgotBox(false)" class="text-slate-400 hover:text-white text-xs cursor-pointer">
                             <i class="fa-solid fa-xmark"></i>
                         </button>
                     </div>
-                    <div class="relative">
-                        <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
-                            <i class="fa-solid fa-envelope text-xs"></i>
-                        </span>
-                        <input type="email" id="resetEmailInput" placeholder="Enter your registered email" class="w-full bg-slate-900/90 border border-slate-700/60 rounded-lg px-3 py-2 pl-9 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-400">
+
+                    <!-- Step 1: Send OTP -->
+                    <div id="otpStep1" class="space-y-2">
+                        <div class="relative">
+                            <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
+                                <i class="fa-solid fa-envelope text-xs"></i>
+                            </span>
+                            <input type="email" id="resetEmailInput" placeholder="Enter your registered email" class="w-full bg-slate-900/90 border border-slate-700/60 rounded-lg px-3 py-2 pl-9 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-400">
+                        </div>
+                        <button type="button" onclick="sendResetOTP()" id="sendOtpBtn" class="w-full py-2 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 text-cyan-300 font-semibold text-xs transition-all cursor-pointer">
+                            Send 6-Digit OTP
+                        </button>
                     </div>
-                    <button type="button" onclick="handleForgotPassword()" id="sendResetBtn" class="w-full py-2 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 text-cyan-300 font-semibold text-xs transition-all cursor-pointer">
-                        Send Password Reset Link
-                    </button>
+
+                    <!-- Step 2: Verify OTP & Set New Password -->
+                    <div id="otpStep2" class="hidden space-y-2">
+                        <input type="text" id="otpCodeInput" maxlength="6" placeholder="Enter 6-digit OTP from email" class="w-full bg-slate-900/90 border border-slate-700/60 rounded-lg px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-400 tracking-widest text-center font-bold">
+                        <input type="password" id="newResetPassword" placeholder="New password (8-15 chars, 1 special)" class="w-full bg-slate-900/90 border border-slate-700/60 rounded-lg px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-400">
+                        <button type="button" onclick="verifyOtpAndReset()" id="confirmOtpBtn" class="w-full py-2 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-300 font-semibold text-xs transition-all cursor-pointer">
+                            Verify OTP & Update Password
+                        </button>
+                    </div>
                 </div>
 
                 <!-- Google reCAPTCHA Widget (Sign Up Only) - Explicitly Rendered -->
@@ -279,12 +292,19 @@
         import {
             getAuth,
             signInWithPopup,
-            GoogleAuthProvider,
-            sendPasswordResetEmail,
-            createUserWithEmailAndPassword,
-            signInWithEmailAndPassword
+            GoogleAuthProvider
         } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-        import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+        import {
+            getFirestore,
+            doc,
+            setDoc,
+            getDoc,
+            updateDoc,
+            collection,
+            query,
+            where,
+            getDocs
+        } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyA6XeVnSY1HVleGyyW133nhmkQEvC6d9JQ",
@@ -300,6 +320,10 @@
         const auth = getAuth(app);
         const db = getFirestore(app);
         const provider = new GoogleAuthProvider();
+
+        let generatedOtp = null;
+        let resetTargetDocId = null;
+        let otpExpiryTime = 0;
 
         // Google Login / Cloud Sync
         window.handleGoogleLogin = async function() {
@@ -336,37 +360,105 @@
             }
         };
 
-        // Real Firebase Password Reset Handler (Using Sign In Page Inline Input)
-        window.handleForgotPassword = async function() {
-            const targetEmail = document.getElementById('resetEmailInput').value.trim();
-            const sendBtn = document.getElementById('sendResetBtn');
+        // Step 1: Send 6-Digit OTP via EmailJS
+        window.sendResetOTP = async function() {
+            const targetEmail = document.getElementById('resetEmailInput').value.trim().toLowerCase();
+            const sendBtn = document.getElementById('sendOtpBtn');
 
             if (!targetEmail) {
-                showAlert("Please enter your registered email address in the reset box.", "error");
+                showAlert("Please enter your registered email address.", "error");
                 return;
             }
 
-            sendBtn.innerText = "Sending...";
+            sendBtn.innerText = "Checking & Sending OTP...";
             sendBtn.disabled = true;
 
             try {
-                await sendPasswordResetEmail(auth, targetEmail, {
-                    url: "https://intervai-kcml.onrender.com/auth.html",
-                    handleCodeInApp: false
+                const q = query(collection(db, "users"), where("email", "==", targetEmail));
+                const querySnap = await getDocs(q);
+
+                if (querySnap.empty) {
+                    showAlert("No account found with this email address.", "error");
+                    sendBtn.innerText = "Send 6-Digit OTP";
+                    sendBtn.disabled = false;
+                    return;
+                }
+
+                const userDoc = querySnap.docs[0];
+                resetTargetDocId = userDoc.id;
+                const userName = userDoc.data().fullName || userDoc.id;
+
+                generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
+                otpExpiryTime = Date.now() + 10 * 60 * 1000;
+
+                await emailjs.send('service_93en4kh', 'template_rilq2id', {
+                    to_name: userName,
+                    to_email: targetEmail,
+                    message: `Hi ${userName},\n\nYour intervAI Password Reset OTP is: ${generatedOtp}\n\nThis code is valid for 10 minutes. Enter this code on the intervAI Sign In page to set your new password.\n\nBest regards,\nTeam intervAI`
                 });
-                showAlert("Password reset link sent to " + targetEmail + "! Check your inbox.", "success");
-                toggleForgotBox(false);
-                document.getElementById('resetEmailInput').value = "";
+
+                document.getElementById('otpStep1').classList.add('hidden');
+                document.getElementById('otpStep2').classList.remove('hidden');
+                showAlert("6-digit OTP sent to " + targetEmail + "! Enter it below.", "success");
             } catch (error) {
-                console.error("Password Reset Error:", error);
-                showAlert("Failed to send reset email: " + error.message, "error");
+                console.error("OTP Error:", error);
+                showAlert("Failed to send OTP: " + (error.text || error.message), "error");
             } finally {
-                sendBtn.innerText = "Send Password Reset Link";
+                sendBtn.innerText = "Send 6-Digit OTP";
                 sendBtn.disabled = false;
             }
         };
 
-        window.authRef = { auth, createUserWithEmailAndPassword, signInWithEmailAndPassword };
+        // Step 2: Verify OTP & Update Password in Firestore
+        window.verifyOtpAndReset = async function() {
+            const enteredOtp = document.getElementById('otpCodeInput').value.trim();
+            const newPwd = document.getElementById('newResetPassword').value;
+            const confirmBtn = document.getElementById('confirmOtpBtn');
+
+            if (!generatedOtp || Date.now() > otpExpiryTime) {
+                showAlert("OTP expired. Please request a new OTP.", "error");
+                document.getElementById('otpStep2').classList.add('hidden');
+                document.getElementById('otpStep1').classList.remove('hidden');
+                return;
+            }
+
+            if (enteredOtp !== generatedOtp) {
+                showAlert("Invalid OTP. Please check your email and try again.", "error");
+                return;
+            }
+
+            const passwordRegex = /^(?=.*[0-9])(?=.*[!@#$%^&*(),.?":{}|<>_])[a-zA-Z0-9!@#$%^&*(),.?":{}|<>_]{8,15}$/;
+            if (!passwordRegex.test(newPwd)) {
+                showAlert("New password must be 8-15 characters long, alphanumeric, and contain at least 1 special character.", "error");
+                return;
+            }
+
+            confirmBtn.innerText = "Updating Password...";
+            confirmBtn.disabled = true;
+
+            try {
+                await updateDoc(doc(db, "users", resetTargetDocId), {
+                    password: newPwd,
+                    updatedAt: new Date().toISOString()
+                });
+
+                generatedOtp = null;
+                resetTargetDocId = null;
+                document.getElementById('otpCodeInput').value = "";
+                document.getElementById('newResetPassword').value = "";
+                document.getElementById('resetEmailInput').value = "";
+                toggleForgotBox(false);
+
+                showAlert("Password updated successfully! You can now Sign In with your new password.", "success");
+            } catch (error) {
+                console.error("Update Error:", error);
+                showAlert("Failed to update password: " + error.message, "error");
+            } finally {
+                confirmBtn.innerText = "Verify OTP & Update Password";
+                confirmBtn.disabled = false;
+            }
+        };
+
         window.dbRef = { db, doc, setDoc, getDoc };
     </script>
 
@@ -379,6 +471,8 @@
             const box = document.getElementById('forgotPasswordBox');
             if (show) {
                 box.classList.remove('hidden');
+                document.getElementById('otpStep1').classList.remove('hidden');
+                document.getElementById('otpStep2').classList.add('hidden');
                 document.getElementById('resetEmailInput').focus();
             } else {
                 box.classList.add('hidden');
@@ -418,7 +512,6 @@
                 toggleForgotBox(false);
                 submitBtnText.innerText = "Create Account";
 
-                // Explicitly render reCAPTCHA when switching to Sign Up tab
                 setTimeout(() => {
                     if (window.grecaptcha && recaptchaWidgetId === null) {
                         try {
@@ -486,18 +579,17 @@
                 });
         }
 
-        // Manual Sign Up & Sign In synced with Firebase Auth + Cloud Firestore
+        // Manual Sign Up & Sign In with Cloud Firestore
         async function handleAuthSubmit(event) {
             event.preventDefault();
             const username = document.getElementById('username').value.trim().toLowerCase();
             const password = document.getElementById('password').value;
             const fullName = document.getElementById('fullName').value.trim();
-            const email = document.getElementById('email').value.trim();
+            const email = document.getElementById('email').value.trim().toLowerCase();
             
             const submitBtnText = document.getElementById('submitBtnText');
             const submitSpinner = document.getElementById('submitSpinner');
 
-            // 1. Password Policy Validation (Only on Sign Up)
             if (currentMode === 'signup') {
                 const passwordRegex = /^(?=.*[0-9])(?=.*[!@#$%^&*(),.?":{}|<>_])[a-zA-Z0-9!@#$%^&*(),.?":{}|<>_]{8,15}$/;
                 if (!passwordRegex.test(password)) {
@@ -505,7 +597,6 @@
                     return;
                 }
 
-                // Verify reCAPTCHA on Sign Up mode using widget ID
                 const recaptchaResponse = recaptchaWidgetId !== null ? grecaptcha.getResponse(recaptchaWidgetId) : grecaptcha.getResponse();
                 if (!recaptchaResponse || recaptchaResponse.length === 0) {
                     showAlert("Please complete the reCAPTCHA verification.", "error");
@@ -513,17 +604,15 @@
                 }
             }
 
-            submitBtnText.innerText = currentMode === 'signup' ? "Creating Account..." : "Verifying Account...";
+            submitBtnText.innerText = currentMode === 'signup' ? "Checking Cloud..." : "Verifying Account...";
             submitSpinner.classList.remove('hidden');
 
             try {
                 const { db, doc, setDoc, getDoc } = window.dbRef;
-                const { auth, createUserWithEmailAndPassword, signInWithEmailAndPassword } = window.authRef;
                 const userDocRef = doc(db, "users", username);
                 const userSnapshot = await getDoc(userDocRef);
 
                 if (currentMode === 'signup') {
-                    // 2. Check if Username Already Exists
                     if (userSnapshot.exists()) {
                         showAlert("This username already exists! Please choose another one or sign in.", "error");
                         submitBtnText.innerText = "Create Account";
@@ -532,21 +621,17 @@
                         return;
                     }
 
-                    // 3. Register user in Firebase Auth so password reset & auth work natively
-                    const userCred = await createUserWithEmailAndPassword(auth, email, password);
-
                     const newUser = {
-                        uid: userCred.user.uid,
                         username,
                         fullName,
                         email,
+                        password,
                         createdAt: new Date().toISOString()
                     };
 
                     await setDoc(userDocRef, newUser);
                     localStorage.setItem('intervai_current_user', JSON.stringify({ username, fullName, email }));
                     
-                    // Trigger Welcome Email
                     sendWelcomeEmail(fullName, email);
 
                     showAlert("Account created & welcome email sent successfully!", "success");
@@ -563,9 +648,12 @@
                     }
 
                     const userData = userSnapshot.data();
-
-                    // Authenticate via Firebase Auth using the email mapped to this username
-                    await signInWithEmailAndPassword(auth, userData.email, password);
+                    if (userData.password !== password) {
+                        showAlert("Incorrect password. Please try again or reset via OTP.", "error");
+                        submitBtnText.innerText = "Sign In to Dashboard";
+                        submitSpinner.classList.add('hidden');
+                        return;
+                    }
 
                     localStorage.setItem('intervai_current_user', JSON.stringify({ 
                         username: userData.username, 
@@ -579,14 +667,8 @@
                     }, 1500);
                 }
             } catch (error) {
-                console.error("Auth/Database Error:", error);
-                let friendlyMsg = error.message;
-                if (error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
-                    friendlyMsg = "Incorrect password. Please try again or reset your password.";
-                } else if (error.code === 'auth/email-already-in-use') {
-                    friendlyMsg = "This email is already registered. Please sign in or reset your password.";
-                }
-                showAlert(friendlyMsg, "error");
+                console.error("Database Error:", error);
+                showAlert("Database operation failed: " + error.message, "error");
                 submitBtnText.innerText = currentMode === 'signup' ? "Create Account" : "Sign In to Dashboard";
                 submitSpinner.classList.add('hidden');
                 if (currentMode === 'signup' && recaptchaWidgetId !== null) grecaptcha.reset(recaptchaWidgetId);
