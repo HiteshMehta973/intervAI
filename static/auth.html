@@ -150,7 +150,26 @@
                         <input type="checkbox" class="rounded bg-slate-950 border-slate-700 text-cyan-500 focus:ring-0">
                         <span>Remember me</span>
                     </label>
-                    <a href="#" onclick="handleForgotPassword(); return false;" class="hover:text-cyan-400 transition-colors">Forgot password?</a>
+                    <a href="#" onclick="toggleForgotBox(true); return false;" class="hover:text-cyan-400 transition-colors">Forgot password?</a>
+                </div>
+
+                <!-- Inline Forgot Password Box (Sign In Page Only) -->
+                <div id="forgotPasswordBox" class="hidden p-3.5 rounded-xl bg-slate-950/80 border border-cyan-500/30 space-y-2.5 transition-all">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-semibold text-cyan-400">Reset Your Password</span>
+                        <button type="button" onclick="toggleForgotBox(false)" class="text-slate-400 hover:text-white text-xs cursor-pointer">
+                            <i class="fa-solid fa-xmark"></i>
+                        </button>
+                    </div>
+                    <div class="relative">
+                        <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
+                            <i class="fa-solid fa-envelope text-xs"></i>
+                        </span>
+                        <input type="email" id="resetEmailInput" placeholder="Enter your registered email" class="w-full bg-slate-900/90 border border-slate-700/60 rounded-lg px-3 py-2 pl-9 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-400">
+                    </div>
+                    <button type="button" onclick="handleForgotPassword()" id="sendResetBtn" class="w-full py-2 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 text-cyan-300 font-semibold text-xs transition-all cursor-pointer">
+                        Send Password Reset Link
+                    </button>
                 </div>
 
                 <!-- Google reCAPTCHA Widget (Sign Up Only) - Explicitly Rendered -->
@@ -317,42 +336,33 @@
             }
         };
 
-        // Real Firebase Password Reset Handler (Lookup via Username or Email Input)
+        // Real Firebase Password Reset Handler (Using Sign In Page Inline Input)
         window.handleForgotPassword = async function() {
-            let targetEmail = document.getElementById('email').value.trim();
-            const usernameVal = document.getElementById('username').value.trim().toLowerCase();
-
-            // Fetch registered email from Firestore if username is entered in Sign In tab
-            if (!targetEmail && usernameVal) {
-                try {
-                    const userSnap = await getDoc(doc(db, "users", usernameVal));
-                    if (userSnap.exists() && userSnap.data().email) {
-                        targetEmail = userSnap.data().email.trim();
-                    }
-                } catch (err) {
-                    console.warn("Firestore email lookup error:", err);
-                }
-            }
-
-            // Fallback prompt if neither email nor valid username is provided
-            if (!targetEmail) {
-                targetEmail = (prompt("Enter your registered email address to receive a password reset link:") || "").trim();
-            }
+            const targetEmail = document.getElementById('resetEmailInput').value.trim();
+            const sendBtn = document.getElementById('sendResetBtn');
 
             if (!targetEmail) {
-                showAlert("Please enter your registered email or username first.", "error");
+                showAlert("Please enter your registered email address in the reset box.", "error");
                 return;
             }
+
+            sendBtn.innerText = "Sending...";
+            sendBtn.disabled = true;
 
             try {
                 await sendPasswordResetEmail(auth, targetEmail, {
                     url: "https://intervai-kcml.onrender.com/auth.html",
                     handleCodeInApp: false
                 });
-                showAlert("Password reset link sent to " + targetEmail + "! Open the latest email link directly in a new tab.", "success");
+                showAlert("Password reset link sent to " + targetEmail + "! Check your inbox.", "success");
+                toggleForgotBox(false);
+                document.getElementById('resetEmailInput').value = "";
             } catch (error) {
                 console.error("Password Reset Error:", error);
                 showAlert("Failed to send reset email: " + error.message, "error");
+            } finally {
+                sendBtn.innerText = "Send Password Reset Link";
+                sendBtn.disabled = false;
             }
         };
 
@@ -364,6 +374,16 @@
     <script>
         let currentMode = 'signin';
         let recaptchaWidgetId = null;
+
+        window.toggleForgotBox = function(show) {
+            const box = document.getElementById('forgotPasswordBox');
+            if (show) {
+                box.classList.remove('hidden');
+                document.getElementById('resetEmailInput').focus();
+            } else {
+                box.classList.add('hidden');
+            }
+        };
 
         function switchTab(mode) {
             currentMode = mode;
@@ -395,6 +415,7 @@
                 document.getElementById('fullName').required = true;
                 document.getElementById('email').required = true;
                 signinOptions.classList.add('hidden');
+                toggleForgotBox(false);
                 submitBtnText.innerText = "Create Account";
 
                 // Explicitly render reCAPTCHA when switching to Sign Up tab
