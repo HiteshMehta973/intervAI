@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from fastapi.staticfiles import StaticFiles
@@ -11,7 +11,7 @@ import json
 
 load_dotenv()
 
-app = FastAPI(title="intervAI Enterprise Gemini Backend Engine", version="3.1.0")
+app = FastAPI(title="intervAI Enterprise Gemini Backend Engine", version="3.2.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -27,8 +27,8 @@ SESSION_DB = {}
 
 
 class InterviewStartRequest(BaseModel):
-    role: str
-    category: str
+    role: str = "Software Engineer"
+    category: str = "Technical"
     language: Optional[str] = "English"
 
 
@@ -55,17 +55,8 @@ class SandboxEvaluationRequest(BaseModel):
     answer: str
 
 
-@app.get("/api/health")
-def read_root():
-    return {"status": "online", "message": "intervAI Secure Gemini Adaptive Backend is running."}
-
-
-@app.post("/api/interview/start")
-def start_interview(data: InterviewStartRequest):
+def _generate_start_response(role: str, category: str, language: str):
     session_id = "sess_" + os.urandom(4).hex()
-    role = data.role
-    category = data.category
-    language = data.language
 
     SESSION_DB[session_id] = {
         "role": role,
@@ -90,7 +81,7 @@ def start_interview(data: InterviewStartRequest):
 
     try:
         response = client.models.generate_content(
-            model='gemini-3.8-flash',
+            model='gemini-2.5-flash',
             contents=prompt,
             config=types.GenerateContentConfig(temperature=0.85)
         )
@@ -113,6 +104,25 @@ def start_interview(data: InterviewStartRequest):
     }
 
 
+@app.get("/api/health")
+def read_root():
+    return {"status": "online", "message": "intervAI Secure Gemini Adaptive Backend is running."}
+
+
+@app.post("/api/interview/start")
+def start_interview_post(data: InterviewStartRequest):
+    return _generate_start_response(data.role, data.category, data.language or "English")
+
+
+@app.get("/api/interview/start")
+def start_interview_get(
+    role: str = Query("Software Engineer"),
+    category: str = Query("Technical"),
+    language: str = Query("English")
+):
+    return _generate_start_response(role, category, language)
+
+
 @app.post("/api/interview/evaluate")
 def evaluate_answer(data: AnswerSubmissionRequest):
     session_id = data.session_id
@@ -120,12 +130,11 @@ def evaluate_answer(data: AnswerSubmissionRequest):
     question_index = data.question_index
     role = data.role
     category = data.category
-    language = data.language
+    language = data.language or "English"
 
     session_data = SESSION_DB.get(session_id, {"asked_questions": []})
     previous_questions = session_data.get("asked_questions", [])
 
-    # Keep early questions beginner-friendly and gradually progress
     level_guide = (
         "Ask a simple beginner-level question about basic concepts. Use very simple and easy English, short sentences, and avoid difficult vocabulary."
         if question_index < 5
@@ -159,7 +168,7 @@ def evaluate_answer(data: AnswerSubmissionRequest):
 
     try:
         response = client.models.generate_content(
-            model='gemini-3.8-flash',
+            model='gemini-2.5-flash',
             contents=prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
@@ -239,7 +248,7 @@ def sandbox_evaluate(data: SandboxEvaluationRequest):
 
     try:
         response = client.models.generate_content(
-            model='gemini-3.8-flash',
+            model='gemini-2.5-flash',
             contents=prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
