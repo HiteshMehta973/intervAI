@@ -299,10 +299,7 @@
             doc,
             setDoc,
             getDoc,
-            updateDoc,
             collection,
-            query,
-            where,
             getDocs
         } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
@@ -360,7 +357,7 @@
             }
         };
 
-        // Step 1: Send 6-Digit OTP via EmailJS
+        // Step 1: Send 6-Digit OTP via EmailJS (Case-Insensitive + Multi-Account Safe)
         window.sendResetOTP = async function() {
             const targetEmail = document.getElementById('resetEmailInput').value.trim().toLowerCase();
             const sendBtn = document.getElementById('sendOtpBtn');
@@ -374,33 +371,41 @@
             sendBtn.disabled = true;
 
             try {
-                const q = query(collection(db, "users"), where("email", "==", targetEmail));
-                const querySnap = await getDocs(q);
+                const allUsersSnap = await getDocs(collection(db, "users"));
+                let matchedDocs = [];
 
-                if (querySnap.empty) {
+                allUsersSnap.forEach((docSnap) => {
+                    const data = docSnap.data();
+                    if (data.email && data.email.trim().toLowerCase() === targetEmail) {
+                        matchedDocs.push({ id: docSnap.id, ...data });
+                    }
+                });
+
+                if (matchedDocs.length === 0) {
                     showAlert("No account found with this email address.", "error");
                     sendBtn.innerText = "Send 6-Digit OTP";
                     sendBtn.disabled = false;
                     return;
                 }
 
-                const userDoc = querySnap.docs[0];
-                resetTargetDocId = userDoc.id;
-                const userName = userDoc.data().fullName || userDoc.id;
+                // Prefer manual account with password field (e.g., hardik123 over Google-only doc)
+                const targetUser = matchedDocs.find(u => u.password) || matchedDocs[0];
+                resetTargetDocId = targetUser.id;
+                const userName = targetUser.fullName || targetUser.id;
 
                 generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
                 otpExpiryTime = Date.now() + 10 * 60 * 1000;
 
-               await emailjs.send('service_93en4kh', 'template_tv0qjff', {
-                        to_name: userName,
-                        to_email: targetEmail,
-                        email: targetEmail,
-                        otp_code: generatedOtp
-                    });
+                await emailjs.send('service_93en4kh', 'template_tv0qjff', {
+                    to_name: userName,
+                    to_email: targetEmail,
+                    email: targetEmail,
+                    otp_code: generatedOtp
+                });
 
                 document.getElementById('otpStep1').classList.add('hidden');
                 document.getElementById('otpStep2').classList.remove('hidden');
-                showAlert("6-digit OTP sent to " + targetEmail + "! Enter it below.", "success");
+                showAlert(`6-digit OTP sent to ${targetEmail} (Account: ${resetTargetDocId})!`, "success");
             } catch (error) {
                 console.error("OTP Error:", error);
                 showAlert("Failed to send OTP: " + (error.text || error.message), "error");
@@ -410,10 +415,10 @@
             }
         };
 
-        // Step 2: Verify OTP & Update Password in Firestore
+        // Step 2: Verify OTP & Update Password in Firestore with Verification
         window.verifyOtpAndReset = async function() {
             const enteredOtp = document.getElementById('otpCodeInput').value.trim();
-            const newPwd = document.getElementById('newResetPassword').value;
+            const newPwd = document.getElementById('newResetPassword').value.trim();
             const confirmBtn = document.getElementById('confirmOtpBtn');
 
             if (!generatedOtp || Date.now() > otpExpiryTime) {
@@ -434,14 +439,25 @@
                 return;
             }
 
+            if (!resetTargetDocId) {
+                showAlert("User document reference missing. Please request OTP again.", "error");
+                return;
+            }
+
             confirmBtn.innerText = "Updating Password...";
             confirmBtn.disabled = true;
 
             try {
-                await updateDoc(doc(db, "users", resetTargetDocId), {
+                const docRef = doc(db, "users", resetTargetDocId);
+                await setDoc(docRef, {
                     password: newPwd,
                     updatedAt: new Date().toISOString()
-                });
+                }, { merge: true });
+
+                const checkSnap = await getDoc(docRef);
+                if (!checkSnap.exists() || checkSnap.data().password !== newPwd) {
+                    throw new Error("Firestore write did not update password field for doc: " + resetTargetDocId);
+                }
 
                 generatedOtp = null;
                 resetTargetDocId = null;
@@ -450,10 +466,10 @@
                 document.getElementById('resetEmailInput').value = "";
                 toggleForgotBox(false);
 
-                showAlert("Password updated successfully! You can now Sign In with your new password.", "success");
+                showAlert("Password updated in cloud! Now sign in with your new password.", "success");
             } catch (error) {
-                console.error("Update Error:", error);
-                showAlert("Failed to update password: " + error.message, "error");
+                console.error("Password Update Verification Error:", error);
+                showAlert("Password update failed: " + error.message, "error");
             } finally {
                 confirmBtn.innerText = "Verify OTP & Update Password";
                 confirmBtn.disabled = false;
