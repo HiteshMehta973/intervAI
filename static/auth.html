@@ -391,11 +391,12 @@
                 generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
                 otpExpiryTime = Date.now() + 10 * 60 * 1000;
 
-                await emailjs.send('service_93en4kh', 'template_rilq2id', {
-                    to_name: userName,
-                    to_email: targetEmail,
-                    message: `Hi ${userName},\n\nYour intervAI Password Reset OTP is: ${generatedOtp}\n\nThis code is valid for 10 minutes. Enter this code on the intervAI Sign In page to set your new password.\n\nBest regards,\nTeam intervAI`
-                });
+               await emailjs.send('service_93en4kh', 'template_tv0qjff', {
+                        to_name: userName,
+                        to_email: targetEmail,
+                        email: targetEmail,
+                        otp_code: generatedOtp
+                    });
 
                 document.getElementById('otpStep1').classList.add('hidden');
                 document.getElementById('otpStep2').classList.remove('hidden');
