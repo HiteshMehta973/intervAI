@@ -357,9 +357,10 @@
             }
         };
 
-        // Step 1: Send 6-Digit OTP via EmailJS (Case-Insensitive + Multi-Account Safe)
+        // Step 1: Send 6-Digit OTP via EmailJS (Username-Aware & Works Even If Username Is Forgotten)
         window.sendResetOTP = async function() {
             const targetEmail = document.getElementById('resetEmailInput').value.trim().toLowerCase();
+            const typedUsername = document.getElementById('username').value.trim().toLowerCase();
             const sendBtn = document.getElementById('sendOtpBtn');
 
             if (!targetEmail) {
@@ -388,8 +389,23 @@
                     return;
                 }
 
-                // Prefer manual account with password field (e.g., hardik123 over Google-only doc)
-                const targetUser = matchedDocs.find(u => u.password) || matchedDocs[0];
+                let targetUser = null;
+
+                if (typedUsername) {
+                    // Match the exact username entered in the Sign In field
+                    targetUser = matchedDocs.find(u => u.id.toLowerCase() === typedUsername);
+                    if (!targetUser) {
+                        showAlert(`Username "${typedUsername}" is not linked with ${targetEmail}.`, "error");
+                        sendBtn.innerText = "Send 6-Digit OTP";
+                        sendBtn.disabled = false;
+                        return;
+                    }
+                } else {
+                    // Username left blank (user forgot username): prefer password-based account if duplicate exists
+                    targetUser = matchedDocs.find(u => u.password) || matchedDocs[0];
+                    document.getElementById('username').value = targetUser.id;
+                }
+
                 resetTargetDocId = targetUser.id;
                 const userName = targetUser.fullName || targetUser.id;
 
@@ -405,7 +421,7 @@
 
                 document.getElementById('otpStep1').classList.add('hidden');
                 document.getElementById('otpStep2').classList.remove('hidden');
-                showAlert(`OTP sent to ${targetEmail} for username "${resetTargetDocId}"!`, "success");
+                showAlert(`OTP sent to ${targetEmail}! Account username: "${resetTargetDocId}".`, "success");
             } catch (error) {
                 console.error("OTP Error:", error);
                 showAlert("Failed to send OTP: " + (error.text || error.message), "error");
@@ -456,7 +472,7 @@
 
                 const checkSnap = await getDoc(docRef);
                 if (!checkSnap.exists() || checkSnap.data().password !== newPwd) {
-                    throw new Error("Database write did not save for: " + resetTargetDocId);
+                    throw new Error("Firestore write did not update password field for doc: " + resetTargetDocId);
                 }
 
                 const updatedUser = resetTargetDocId;
