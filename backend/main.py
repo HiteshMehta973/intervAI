@@ -12,7 +12,7 @@ import json
 load_dotenv()
 
 app = FastAPI(title="intervAI Enterprise Gemini Backend Engine", version="3.1.0")
-app.mount("/", StaticFiles(directory="static", html=True), name="static")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -25,10 +25,12 @@ client = genai.Client()
 
 SESSION_DB = {}
 
+
 class InterviewStartRequest(BaseModel):
     role: str
     category: str
     language: Optional[str] = "English"
+
 
 class AnswerSubmissionRequest(BaseModel):
     session_id: str
@@ -38,6 +40,7 @@ class AnswerSubmissionRequest(BaseModel):
     category: str
     language: Optional[str] = "English"
 
+
 class SaveReportRequest(BaseModel):
     username: str
     role: str
@@ -46,14 +49,16 @@ class SaveReportRequest(BaseModel):
     metrics: dict
     transcript: List[dict]
 
+
 class SandboxEvaluationRequest(BaseModel):
     question: str
     answer: str
 
-    
+
 @app.get("/api/health")
 def read_root():
     return {"status": "online", "message": "intervAI Secure Gemini Adaptive Backend is running."}
+
 
 @app.post("/api/interview/start")
 def start_interview(data: InterviewStartRequest):
@@ -61,7 +66,7 @@ def start_interview(data: InterviewStartRequest):
     role = data.role
     category = data.category
     language = data.language
-    
+
     SESSION_DB[session_id] = {
         "role": role,
         "category": category,
@@ -70,24 +75,29 @@ def start_interview(data: InterviewStartRequest):
     }
 
     prompt = f"""
-    You are an expert technical interviewer for top global enterprises.
-    Target Role: {role}
-    Category: {category}
-    Language: {language}
-    Generate the first opening interview question. Ensure it is unique, professional, and challenging.
-    Return ONLY the question text in {language} without any extra conversational filler, quotes, or markdown.
+    You are a friendly AI interviewer.
+    The candidate is applying for the role of: {role}.
+    Interview category: {category}.
+    Language: {language}.
+
+    Ask the candidate to introduce themselves ("Tell me about yourself"), but rephrase it naturally in a slightly different, warm, and welcoming way each time.
+    Use very simple and easy {language}.
+    Keep the question short, clear, and easy to understand.
+    Do not use difficult vocabulary or complex sentences.
+
+    Return ONLY the question text in {language} without quotes or markdown.
     """
 
     try:
         response = client.models.generate_content(
             model='gemini-3.8-flash',
             contents=prompt,
-            config=types.GenerateContentConfig(temperature=0.7)
+            config=types.GenerateContentConfig(temperature=0.85)
         )
         ai_question = response.text.strip()
     except Exception as e:
         print(f"Error in start_interview: {e}")
-        ai_question = f"Could you walk me through your core experience and technical approach for a {role} role?"
+        ai_question = f"Hi! To get started, could you tell me a little bit about yourself and your interest in the {role} role?"
 
     SESSION_DB[session_id]["asked_questions"].append(ai_question)
 
@@ -97,7 +107,7 @@ def start_interview(data: InterviewStartRequest):
         "data": {
             "question_index": 0,
             "question": ai_question,
-            "difficulty": "Medium",
+            "difficulty": "Easy",
             "max_questions": 15
         }
     }
@@ -115,13 +125,22 @@ def evaluate_answer(data: AnswerSubmissionRequest):
     session_data = SESSION_DB.get(session_id, {"asked_questions": []})
     previous_questions = session_data.get("asked_questions", [])
 
+    # Keep early questions beginner-friendly and gradually progress
+    level_guide = (
+        "Ask a simple beginner-level question about basic concepts. Use very simple and easy English, short sentences, and avoid difficult vocabulary."
+        if question_index < 5
+        else "Ask a clear, practical question using simple and easy-to-understand language without overly complex jargon."
+    )
+
     prompt = f"""
-    You are an expert AI technical interviewer. Evaluate the candidate for the role: {role}.
+    You are a friendly AI interviewer. Evaluate the candidate for the role: {role} (Category: {category}).
     Language preference: {language}
     Candidate's Answer: "{answer_text}"
 
     CRITICAL INSTRUCTION FOR QUESTION GENERATION:
-    You MUST NOT repeat any of the following previously asked questions under any circumstances:
+    - {level_guide}
+    - Keep the next question short, clear, and easy to understand.
+    - You MUST NOT repeat any of the following previously asked questions under any circumstances:
     {json.dumps(previous_questions, indent=2)}
 
     Analyze the answer silently across 4 key metrics (score each out of 100):
@@ -131,7 +150,7 @@ def evaluate_answer(data: AnswerSubmissionRequest):
     4. clarity
 
     Calculate an "overall_score" as the integer average of these four metrics (0-100).
-    Provide constructive interim feedback ("feedback") in {language}.
+    Provide encouraging, simple, constructive feedback ("feedback") in {language}.
     Generate a brand new, unique NEXT interview question ("next_question") in {language} that is completely different from all previous questions.
     
     Return a valid JSON object with keys: 
@@ -149,23 +168,23 @@ def evaluate_answer(data: AnswerSubmissionRequest):
         )
         content = response.text.strip()
         parsed = json.loads(content)
-        
+
         completeness = int(parsed.get("completeness", 70))
         correctness = int(parsed.get("correctness", 75))
         relevance = int(parsed.get("relevance", 80))
         clarity = int(parsed.get("clarity", 75))
         overall_score = int(parsed.get("overall_score", 75))
-        feedback = parsed.get("feedback", "Good structured answer.")
-        next_q_text = parsed.get("next_question", "Can you explain how you handle scalability bottlenecks?")
-        
+        feedback = parsed.get("feedback", "Good and clear answer. Keep going!")
+        next_q_text = parsed.get("next_question", f"What are the basic skills needed for a {role}?")
+
     except Exception as e:
         print(f"Error in evaluate_answer: {e}")
         completeness, correctness, relevance, clarity, overall_score = 70, 75, 80, 75, 75
-        feedback = "Solid explanation, keep focusing on trade-offs."
-        next_q_text = f"How would you optimize performance for a high-traffic {role} system?"
+        feedback = "Nice explanation! Try adding a small example next time."
+        next_q_text = f"Can you explain one basic concept you use often as a {role}?"
 
     if next_q_text in previous_questions:
-        next_q_text = f"Discuss a complex architectural edge case and your mitigation strategy regarding {role}."
+        next_q_text = f"What is one simple project or task you enjoyed working on related to {role}?"
 
     SESSION_DB.setdefault(session_id, {}).setdefault("asked_questions", []).append(next_q_text)
 
@@ -205,15 +224,15 @@ def evaluate_answer(data: AnswerSubmissionRequest):
 @app.post("/api/sandbox/evaluate")
 def sandbox_evaluate(data: SandboxEvaluationRequest):
     prompt = f"""
-    You are an expert AI technical interviewer. 
+    You are a friendly AI interviewer. 
     Question: "{data.question}"
     Candidate's Answer: "{data.answer}"
 
-    Evaluate this specific candidate answer critically, thoroughly, and dynamically. Provide:
+    Evaluate this candidate answer clearly in simple, easy-to-understand English. Provide:
     1. A precise overall score from 40 to 98 based on the depth of the answer ("score").
     2. Exactly 2 specific strengths observed in this answer ("strengths" as a list of strings).
     3. Exactly 2 distinct constructive areas for improvement ("improvements" as a list of strings).
-    4. An insightful, tailored model response or suggestion ("model_suggestion").
+    4. An insightful, simple model response or suggestion ("model_suggestion").
 
     Return a valid JSON object with keys: "score", "strengths", "improvements", "model_suggestion".
     """
@@ -230,7 +249,7 @@ def sandbox_evaluate(data: SandboxEvaluationRequest):
         content = response.text.strip()
         parsed = json.loads(content)
         return {"success": True, "data": parsed}
-        
+
     except Exception as e:
         print(f"ERROR in sandbox evaluation: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -239,6 +258,10 @@ def sandbox_evaluate(data: SandboxEvaluationRequest):
 @app.post("/api/reports/save")
 def save_interview_report(report: SaveReportRequest):
     return {"success": True, "message": "Enterprise report successfully persisted."}
+
+
+# Mount static files after API routes so /api/* endpoints are never shadowed
+app.mount("/", StaticFiles(directory="static", html=True), name="static")
 
 
 if __name__ == "__main__":
