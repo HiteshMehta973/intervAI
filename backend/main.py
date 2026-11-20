@@ -14,7 +14,7 @@ import json
 
 load_dotenv()
 
-app = FastAPI(title="intervAI Enterprise Gemini Backend Engine", version="4.0.0")
+app = FastAPI(title="intervAI Enterprise Gemini Backend Engine", version="4.1.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -133,12 +133,12 @@ def _get_difficulty_for_index(next_q_index: int) -> tuple[str, str]:
     elif next_q_index < 10:
         return (
             "Medium",
-            "Difficulty: MEDIUM (practical level, real-world usage or debugging, simple clear words)."
+            "Difficulty: MEDIUM (practical level, real-world scenarios or decision-making, simple clear words)."
         )
     else:
         return (
             "Hard",
-            "Difficulty: HARD (advanced problem-solving, scaling or edge cases, explained in simple clear words)."
+            "Difficulty: HARD (advanced problem-solving, trade-offs or high-stakes scenarios, explained in simple clear words)."
         )
 
 
@@ -159,6 +159,40 @@ def _language_rule(language: str, allow_greeting: bool = False) -> str:
         else "Do NOT start with 'Hi', 'Hello', 'Welcome', or any greeting—ask directly."
     )
     return f"LANGUAGE: Very simple, clear, everyday English with short sentences. {greeting_note}"
+
+
+def _is_non_technical_role_or_category(role: str, category: str) -> bool:
+    r_low = (role or "").lower()
+    c_low = (category or "").lower()
+    non_tech_keywords = [
+        "manager", "executive", "hr", "human resource", "behavioral", "non-technical",
+        "cultural", "operations", "sales", "marketing", "product manager", "coordinator",
+        "lead", "admin", "business"
+    ]
+    tech_keywords = [
+        "software", "engineer", "developer", "machine learning", "ml", "ai / ml",
+        "data scientist", "system architect", "coding", "technical"
+    ]
+    if any(k in c_low for k in ["non-technical", "behavioral", "hr"]):
+        return True
+    if any(k in r_low for k in non_tech_keywords) and not any(k in r_low for k in tech_keywords):
+        return True
+    return False
+
+
+def _role_alignment_rule(role: str, category: str) -> str:
+    if _is_non_technical_role_or_category(role, category):
+        return (
+            f"ROLE ALIGNMENT: Strictly ask questions suited for '{role}' ({category}) — "
+            f"focus on team coordination, task planning, prioritization, communication, "
+            f"stakeholder updates, handling delays/conflicts, and practical execution. "
+            f"Do NOT ask coding, programming syntax, database queries, APIs, or software architecture questions "
+            f"unless the candidate explicitly mentions them in their answer."
+        )
+    return (
+        f"ROLE ALIGNMENT: Keep questions directly relevant to '{role}' ({category}) "
+        f"and the candidate's actual answers."
+    )
 
 
 def _scope_keys(candidate_id: str, role: str, category: str, language: str) -> List[str]:
@@ -203,26 +237,38 @@ def _get_recent_questions(
 
 
 def _pick_fresh_topic_angle(role: str, category: str, next_index: int) -> str:
-    diverse_angles = [
-        "data structures choice and time-space trade-offs",
-        "API design, status codes, and input validation",
-        "database indexing, transactions, and slow queries",
-        "authentication, authorization, and data security",
-        "caching strategies and cache invalidation",
-        "asynchronous processing, queues, and background jobs",
-        "concurrency, race conditions, and locking",
-        "unit testing, integration testing, and mocking",
-        "debugging production logs and memory leaks",
-        "version control, code reviews, and CI/CD pipelines",
-        "error handling, retries, and graceful degradation",
-        "microservices vs monolith architecture trade-offs",
-        "handling sudden traffic spikes and rate limiting",
-        "clean code refactoring and design patterns",
-        "cloud deployment, environment configs, and monitoring",
-        "cross-team communication and resolving conflicting requirements"
-    ]
-    random.shuffle(diverse_angles)
-    return diverse_angles[next_index % len(diverse_angles)]
+    if _is_non_technical_role_or_category(role, category):
+        angles = [
+            "prioritizing daily tasks and tight deadlines",
+            "coordinating with team members and assigning responsibilities",
+            "handling sudden schedule changes or missed targets",
+            "giving clear status updates and reports to seniors",
+            "resolving misunderstandings or disagreements in a team",
+            "tracking progress and following up without micromanaging",
+            "organizing events, meetings, or multi-step workflows",
+            "motivating teammates when workload is high",
+            "learning a new process or tool quickly on the job",
+            "balancing quality and speed under pressure",
+            "collecting feedback and improving team routines",
+            "handing over tasks smoothly and documenting work"
+        ]
+    else:
+        angles = [
+            "core concepts and practical day-to-day application",
+            "step-by-step problem solving and troubleshooting",
+            "handling edge cases, errors, and unexpected inputs",
+            "improving speed, clarity, and reliability",
+            "testing work and verifying results before completion",
+            "explaining complex ideas simply to non-experts",
+            "making trade-offs when time or resources are limited",
+            "collaborating with teammates and reviewing work",
+            "building a real project from idea to working result",
+            "avoiding common mistakes in real-world scenarios",
+            "adapting to changing requirements mid-task",
+            "measuring success and continuous improvement"
+        ]
+    random.shuffle(angles)
+    return angles[next_index % len(angles)]
 
 
 def _build_dynamic_fallback_question(
@@ -243,19 +289,19 @@ def _build_dynamic_fallback_question(
 
     if is_hindi:
         templates = [
-            f"{role} ({category}) में {topic_focus} को लागू करते समय आप किन बातों का ध्यान रखते हैं?",
-            f"मान लीजिए {role} के प्रोजेक्ट में {topic_focus} से जुड़ी समस्या आ जाए, तो आप उसे कैसे हल करेंगे?",
-            f"सरल शब्दों में बताइए: {role} के लिए {topic_focus} क्यों ज़रूरी है और इसका एक व्यावहारिक उदाहरण क्या है?"
+            f"{role} ({category}) की भूमिका में {topic_focus} को आप व्यवहार में कैसे संभालते हैं?",
+            f"मान लीजिए {role} के काम के दौरान {topic_focus} से जुड़ी स्थिति आ जाए, तो आपका पहला कदम क्या होगा?",
+            f"सरल शब्दों में बताइए: {role} के लिए {topic_focus} क्यों ज़रूरी है और आप इसे कैसे बेहतर बनाते हैं?"
         ]
         if has_meaningful_ans:
             templates.append(
-                f"आपने '{ans_snippet}' का ज़िक्र किया—इसे {role} के काम में {topic_focus} से जोड़कर कैसे समझाएंगे?"
+                f"आपने '{ans_snippet}' का ज़िक्र किया—इसे {role} की ज़िम्मेदारी में {topic_focus} से जोड़कर कैसे समझाएंगे?"
             )
     else:
         templates = [
-            f"For {role} ({category}), what key things do you keep in mind when working with {topic_focus}?",
-            f"Suppose an issue comes up around {topic_focus} in a {role} project—how would you solve it?",
-            f"In simple words, why does {topic_focus} matter for a {role}, and what is one practical example?"
+            f"For a {role} ({category}), how do you handle {topic_focus} in day-to-day work?",
+            f"Suppose a situation comes up around {topic_focus} while working as a {role}—what would you do first?",
+            f"In simple words, why does {topic_focus} matter for a {role}, and how do you approach it?"
         ]
         if has_meaningful_ans:
             templates.append(
@@ -268,9 +314,9 @@ def _build_dynamic_fallback_question(
             return q
     suffix = random.randint(100, 999)
     return (
-        f"{role} में {topic_focus} को बेहतर बनाने के लिए आप कौन-सा तरीका अपनाएंगे? (क्रम {suffix})"
+        f"{role} में {topic_focus} को लेकर आप अगला क्या कदम उठाएंगे? (क्रम {suffix})"
         if is_hindi
-        else f"What approach would you use to improve {topic_focus} in {role}? (case {suffix})"
+        else f"What is your approach to {topic_focus} as a {role}? (case {suffix})"
     )
 
 
@@ -296,16 +342,17 @@ def _generate_start_response(
     }
 
     opening_styles = [
-        "Ask them to introduce themselves and share one project or skill they are proud of.",
-        "Ask them to tell you about themselves and what motivated them to choose this role.",
-        "Ask them to briefly walk through their background, strengths, and current learning focus.",
-        "Ask them to introduce themselves and describe the kind of problems they enjoy solving."
+        "Ask them to introduce themselves and share one experience, responsibility, or project relevant to this role.",
+        "Ask them to tell you about themselves and what draws them to this role.",
+        "Ask them to briefly walk through their background, key strengths, and what they are currently focusing on.",
+        "Ask them to introduce themselves and share the kind of work or team situations they enjoy."
     ]
     chosen_style = random.choice(opening_styles)
 
     prompt = f"""
     You are a friendly AI interviewer for Role: {role} ({category}).
     {_language_rule(lang, allow_greeting=True)}
+    {_role_alignment_rule(role, category)}
 
     Start with a natural "Tell me about yourself" style opening question.
     Style twist: {chosen_style}
@@ -325,16 +372,16 @@ def _generate_start_response(
         if is_hindi:
             intro_variants = [
                 f"नमस्ते! इंटरव्यू की शुरुआत करते हैं—कृपया अपने बारे में बताइए और {role} में आपकी रुचि कैसे शुरू हुई?",
-                f"अपने बारे में संक्षेप में बताइए—आपकी पढ़ाई, मुख्य स्किल्स और {role} के प्रति आपकी रुचि क्या है?",
+                f"अपने बारे में संक्षेप में बताइए—आपकी पृष्ठभूमि, मुख्य खूबियाँ और {role} के प्रति आपकी रुचि क्या है?",
                 f"शुरुआत करने के लिए, आप अपने बारे में कुछ बताइए और यह भी कि आप {role} की भूमिका क्यों चुनना चाहते हैं?",
-                f"कृपया अपना परिचय दीजिए और बताइए कि आपने {role} से जुड़ा अब तक क्या सीखा या बनाया है?"
+                f"कृपया अपना परिचय दीजिए और बताइए कि आपने {role} से जुड़ा अब तक क्या अनुभव या काम किया है?"
             ]
         else:
             intro_variants = [
                 f"Hello! To get started, tell me about yourself and what sparked your interest in {role}.",
-                f"Tell me about yourself—your background, core skills, and why you want to work as a {role}.",
-                f"Let's begin with your introduction: tell me about yourself and a project or skill you built for {role}.",
-                f"Could you tell me about yourself, including your education, strengths, and interest in {role}?"
+                f"Tell me about yourself—your background, core strengths, and why you want to work as a {role}.",
+                f"Let's begin with your introduction: tell me about yourself and an experience or skill relevant to {role}.",
+                f"Could you tell me about yourself, including your strengths and interest in {role}?"
             ]
         choices = [q for q in intro_variants if not _is_duplicate_question(q, recent_qs)]
         ai_question = random.choice(choices or intro_variants)
@@ -427,17 +474,19 @@ def evaluate_answer(data: AnswerSubmissionRequest):
     )
 
     prompt = f"""
-    AI interviewer for {role} ({category}). {_language_rule(lang, allow_greeting=False)}
+    AI interviewer for {role} ({category}).
+    {_language_rule(lang, allow_greeting=False)}
+    {_role_alignment_rule(role, category)}
     Session Variation Seed: #{random_seed_tag}
     Question Asked: "{current_q}"
     Candidate Answer: "{answer_text}"
 
     1. "avatar_reply":
-       - If the candidate does NOT know the answer (e.g., "no", "idk", "pata nahi", "skip", or completely off-topic): politely say it is okay, and YOU (the interviewer) MUST give a clear, simple 2-3 sentence model answer to "{current_q}" so the candidate learns the right answer, then transition smoothly to the next question.
+       - If the candidate does NOT know the answer (e.g., "no", "idk", "pata nahi", "skip", or completely off-topic): politely say it is okay, and YOU (the interviewer) MUST give a clear, simple 2-3 sentence model answer to "{current_q}" suited to {role} ({category}), then transition smoothly to the next question.
        - If the candidate answered the question: briefly react to what they said in 1-2 natural sentences without any greeting ("नमस्ते"/"Hi") and without numeric marks.
     2. "feedback": 1 short helpful tip (or summary of the right answer if they didn't know it). No numeric marks.
     3. Scores (0-100): "completeness", "correctness", "relevance", "clarity", "overall_score" (5-20 if candidate didn't know/skipped; 70+ only if genuinely relevant & clear).
-    4. "next_question": One completely NEW, specific, non-generic question WITHOUT any greeting ("नमस्ते"/"Hi"/"Hello").
+    4. "next_question": One completely NEW, specific, role-accurate question WITHOUT any greeting ("नमस्ते"/"Hi"/"Hello").
        {level_guide}
        Mandatory fresh topic angle: {topic_angle}.
        CRITICAL: Do NOT ask anything similar in concept or wording to ANY of these previously asked questions:
@@ -471,12 +520,12 @@ def evaluate_answer(data: AnswerSubmissionRequest):
 
         next_q_text = re.sub(r"^(नमस्ते[!।,\s]*|स्वागत है[!।,\s]*|hi[!.,\s]*|hello[!.,\s]*)", "", next_q_text, flags=re.IGNORECASE).strip()
 
-        # If Gemini still returned a similar question to history, ask Gemini once more with a brand-new angle
         if next_q_text and _is_duplicate_question(next_q_text, all_blocked_questions):
             alt_angle = _pick_fresh_topic_angle(role, category, next_index + 5)
             retry_q_prompt = f"""
             Generate ONE completely different {role} ({category}) interview question.
             {_language_rule(lang, allow_greeting=False)}
+            {_role_alignment_rule(role, category)}
             {level_guide}
             Topic angle: {alt_angle}.
             It MUST NOT overlap with: {json.dumps(all_blocked_questions[-35:] + [next_q_text], ensure_ascii=False)}
@@ -493,11 +542,11 @@ def evaluate_answer(data: AnswerSubmissionRequest):
         if is_unknown_answer or word_count <= 2:
             completeness, correctness, relevance, clarity, overall_score = 10, 10, 10, 20, 13
             if is_hindi:
-                feedback = f"कोई बात नहीं—'{current_q}' का सरल उत्तर यह है कि आप पहले मूल सिद्धांत को समझें और एक व्यावहारिक उदाहरण के साथ समझाएं।"
-                avatar_reply = f"कोई बात नहीं, मैं इसका संक्षिप्त उत्तर बता देता हूँ: '{current_q}' में सबसे पहले मुख्य अवधारणा को स्पष्ट करना और उसका एक आसान उपयोग बताना ज़रूरी होता है। अब अगले सवाल पर चलते हैं।"
+                feedback = f"कोई बात नहीं—'{current_q}' का सरल उत्तर यह है कि आप अपनी भूमिका के अनुसार मुख्य बिंदु स्पष्ट रखें और एक व्यावहारिक उदाहरण दें।"
+                avatar_reply = f"कोई बात नहीं, मैं इसका संक्षिप्त उत्तर बता देता हूँ: '{current_q}' के लिए {role} ({category}) की ज़िम्मेदारी को ध्यान में रखते हुए एक स्पष्ट उदाहरण के साथ बात रखना सबसे अच्छा रहता है। अब अगले सवाल पर चलते हैं।"
             else:
-                feedback = f"No worries—a good answer to '{current_q}' starts with the core concept clearly followed by one practical example."
-                avatar_reply = f"No problem at all, let me share the answer briefly: for '{current_q}', you should explain the core idea in simple words and give one practical example. Let's move to the next question."
+                feedback = f"No worries—a strong answer to '{current_q}' for a {role} states your approach clearly with one practical example."
+                avatar_reply = f"No problem at all, let me share a quick example: for '{current_q}', explain how you handle the situation as a {role} and give one practical example. Let's move to the next question."
         elif word_count < 10:
             completeness, correctness, relevance, clarity, overall_score = 38, 42, 45, 50, 44
             if is_hindi:
