@@ -264,7 +264,13 @@
             vCanvas.height = 48;
 
             const track = activeMediaStream && activeMediaStream.getVideoTracks()[0];
-            const streamLive = Boolean(track && track.readyState === 'live' && track.enabled && video.readyState >= 2 && video.videoWidth > 0);
+            const streamLive = Boolean(
+                track &&
+                track.readyState === 'live' &&
+                track.enabled &&
+                video.readyState >= 2 &&
+                video.videoWidth > 0
+            );
 
             if (!streamLive) {
                 cameraActive = false;
@@ -277,36 +283,26 @@
             const frame = vCtx.getImageData(0, 0, vCanvas.width, vCanvas.height).data;
 
             let lumaSum = 0;
+            let lumaSqSum = 0;
             let diffSum = 0;
-            let skinLikePixels = 0;
-            let totalChecked = 0;
             const pixelCount = frame.length / 4;
 
             for (let i = 0; i < frame.length; i += 4) {
-                const r = frame[i], g = frame[i + 1], b = frame[i + 2];
-                const luma = 0.299 * r + 0.587 * g + 0.114 * b;
+                const luma = 0.299 * frame[i] + 0.587 * frame[i + 1] + 0.114 * frame[i + 2];
                 lumaSum += luma;
+                lumaSqSum += luma * luma;
 
                 if (prevFrameData) {
                     const prevLuma = 0.299 * prevFrameData[i] + 0.587 * prevFrameData[i + 1] + 0.114 * prevFrameData[i + 2];
                     diffSum += Math.abs(luma - prevLuma);
                 }
-
-                // Focus on center area where candidate face is positioned
-                const px = (i / 4) % vCanvas.width;
-                const py = Math.floor((i / 4) / vCanvas.width);
-                if (px > 12 && px < 52 && py > 6 && py < 42) {
-                    totalChecked++;
-                    if (r > 60 && g > 35 && b > 20 && r > g && r > b && (r - b) > 12 && luma > 35) {
-                        skinLikePixels++;
-                    }
-                }
             }
 
             prevFrameData = new Uint8ClampedArray(frame);
             const avgBrightness = lumaSum / pixelCount;
+            const variance = Math.max(0, (lumaSqSum / pixelCount) - (avgBrightness * avgBrightness));
+            const lumaStdDev = Math.sqrt(variance);
             const avgMotion = diffSum / pixelCount;
-            const skinRatio = totalChecked > 0 ? skinLikePixels / totalChecked : 0;
 
             let detectedFacesCount = 0;
             if (faceDetector) {
@@ -318,8 +314,8 @@
                 }
             }
 
-            // Face is considered visible if FaceDetector sees a face OR camera has clear lighting + center face/person features
-            const hasFace = detectedFacesCount > 0 || (avgBrightness > 28 && skinRatio >= 0.08);
+            // Valid if FaceDetector sees a face OR camera is uncovered with real visual detail (not black/covered lens)
+            const hasFace = detectedFacesCount > 0 || (avgBrightness > 18 && lumaStdDev > 8);
 
             presenceSamples++;
             brightnessSum += avgBrightness;
@@ -329,7 +325,7 @@
 
             let expression = "Face Not Visible";
             if (!hasFace) {
-                expression = avgBrightness <= 25 ? "Camera Dark / Off" : "Face Not In Frame";
+                expression = avgBrightness <= 18 ? "Camera Dark / Covered" : "Adjust Camera View";
             } else if (avgMotion > 8.5) {
                 expression = "Expressive";
             } else if (avgMotion > 2.2) {
@@ -355,6 +351,12 @@
                     activeMediaStream = stream;
                     const videoEl = document.getElementById('candidate-video');
                     videoEl.srcObject = stream;
+
+                    await new Promise((resolve) => {
+                        if (videoEl.readyState >= 2 && videoEl.videoWidth > 0) return resolve();
+                        videoEl.onloadeddata = () => resolve();
+                        setTimeout(resolve, 1200);
+                    });
                     await videoEl.play().catch(() => {});
 
                     const track = stream.getVideoTracks()[0];
@@ -363,14 +365,13 @@
                             cameraActive = false;
                             faceVisible = false;
                             document.getElementById('cam-presence-label').textContent = 'Face: Camera Stopped!';
-                            reasonEl.textContent = "Your camera turned off. Please turn it back on so your facial expressions can be checked.";
+                            reasonEl.textContent = "Your camera turned off. Please turn it back on to continue.";
                             document.getElementById('camera-required-overlay').classList.remove('hidden');
                         };
                     }
                 }
 
-                // Wait briefly for video frames to stabilize and check face presence
-                await new Promise(r => setTimeout(r, 450));
+                await new Promise(r => setTimeout(r, 300));
                 const check = await evaluateFrameFaceAndExpression();
 
                 if (check.cameraOk && check.faceOk) {
@@ -379,7 +380,7 @@
                     return true;
                 } else {
                     document.getElementById('cam-presence-label').textContent = `Face: ${check.expression}`;
-                    reasonEl.textContent = "Camera is on, but your face is not clearly visible in front of the camera. Please position your face in the center and ensure proper light.";
+                    reasonEl.textContent = "Your camera feed looks completely dark or covered. Please uncover the camera and sit in good lighting.";
                     document.getElementById('camera-required-overlay').classList.remove('hidden');
                     return false;
                 }
@@ -388,7 +389,7 @@
                 faceVisible = false;
                 console.error("Camera permission/init error:", e);
                 document.getElementById('cam-presence-label').textContent = 'Face: Camera Off';
-                reasonEl.textContent = "Camera permission is required to check facial expressions. Please allow camera access and click 'Turn On & Verify Camera'.";
+                reasonEl.textContent = "Camera permission is required. Please allow camera access and click 'Turn On & Verify Camera'.";
                 document.getElementById('camera-required-overlay').classList.remove('hidden');
                 return false;
             }
