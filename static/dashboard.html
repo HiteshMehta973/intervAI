@@ -36,6 +36,8 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <!-- FontAwesome for Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- jsPDF for PDF Report Export -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <style>
         body { font-family: 'Inter', sans-serif; overflow-x: hidden; }
         .glow-effect { box-shadow: 0 0 50px -10px rgba(6, 182, 212, 0.25); }
@@ -88,10 +90,7 @@
                     </div>
                     <span class="text-2xl font-extrabold tracking-tight text-white">interv<span class="text-cyan-400">AI</span></span>
                 </a>
-                <span id="engine-status-pill" class="hidden sm:inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 text-xs font-mono">
-                    <span class="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse"></span>
-                    <span>Checking Engine...</span>
-                </span>
+                <span class="hidden sm:inline-block px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 text-xs font-mono">Candidate Dashboard</span>
             </div>
 
             <!-- Search & Actions -->
@@ -419,8 +418,8 @@
                         </div>
                         <div class="flex flex-wrap items-center gap-2">
                             <input id="history-filter-input" oninput="handleDashboardSearch(this.value)" type="text" placeholder="Filter by role or category..." class="bg-gray-900 border border-gray-700 rounded-xl px-4 py-2 text-xs text-white focus:outline-none focus:border-cyan-500">
-                            <button onclick="exportSessionHistory()" class="px-3.5 py-2 rounded-xl bg-gray-900 hover:bg-gray-800 border border-gray-700 text-xs font-semibold text-cyan-400 transition cursor-pointer" title="Download History JSON">
-                                <i class="fa-solid fa-download mr-1"></i>Export
+                            <button onclick="exportSessionHistory()" class="px-3.5 py-2 rounded-xl bg-gray-900 hover:bg-gray-800 border border-gray-700 text-xs font-semibold text-cyan-400 transition cursor-pointer" title="Export Report PDF">
+                                <i class="fa-solid fa-file-pdf mr-1"></i>Export PDF
                             </button>
                             <button onclick="clearSessionHistory()" class="px-3.5 py-2 rounded-xl bg-gray-900 hover:bg-red-950/50 border border-gray-700 hover:border-red-500/40 text-xs font-semibold text-red-400 transition cursor-pointer" title="Clear Recorded History">
                                 <i class="fa-solid fa-trash mr-1"></i>Clear
@@ -608,22 +607,6 @@
             return (selectEl && selectEl.value) || "Software Engineer";
         }
 
-        async function checkBackendEngineStatus() {
-            const pill = document.getElementById('engine-status-pill');
-            if (!pill) return;
-            try {
-                const res = await fetch('/api/health');
-                const data = await res.json();
-                if (data && data.status === 'online') {
-                    pill.className = "hidden sm:inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-mono";
-                    pill.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span><span>AI Engine Online</span>`;
-                }
-            } catch {
-                pill.className = "hidden sm:inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-mono";
-                pill.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span><span>Offline Mode</span>`;
-            }
-        }
-
         function syncLatestReportToHistory(username) {
             const historyKey = `intervai_history_${username}`;
             let existing = [];
@@ -686,6 +669,7 @@
             if (dotPing) dotPing.classList.remove('hidden');
             notifList.innerHTML = historyArray.slice(0, 4).map(s => {
                 const isStrong = Number(s.score) >= 70;
+                const switches = Number(s.tabSwitchCount || 0);
                 const iconClass = isStrong ? "fa-trophy text-emerald-400 bg-emerald-500/20" : "fa-chart-line text-cyan-400 bg-cyan-500/20";
                 return `
                     <div class="p-2.5 rounded-xl bg-gray-900/60 border border-gray-800/80 flex items-start space-x-3">
@@ -694,7 +678,7 @@
                         </div>
                         <div>
                             <p class="text-gray-200 font-medium">${s.role} (${s.score}/100)</p>
-                            <p class="text-gray-400 text-[11px]">${s.questionsAnswered || 0} questions answered • Tab switches: ${s.tabSwitchCount || 0}</p>
+                            <p class="text-gray-400 text-[11px]">${s.questionsAnswered || 0} questions answered • Tab switches: ${switches}</p>
                             <span class="text-[9px] text-gray-500">${s.date}</span>
                         </div>
                     </div>
@@ -715,7 +699,7 @@
             const roleBreakdownEl = document.getElementById('role-breakdown-container');
 
             if (userTierEl) {
-                userTierEl.textContent = `${totalSessions} Session${totalSessions === 1 ? '' : 's'} Completed`;
+                userTierEl.textContent = `${totalSessions} ${totalSessions === 1 ? 'Session' : 'Sessions'} Completed`;
             }
 
             if (totalSessions === 0) {
@@ -765,11 +749,12 @@
                 heroSummaryEl.textContent = `Latest session: ${latestSession.role} (${latestSession.score}/100 on ${latestSession.date}). Launch a new session to keep improving.`;
             }
 
-            // Analytics Tab Metrics
             const avgAns = Math.round(historyArray.reduce((acc, s) => acc + Number(s.answerScore ?? s.score ?? 0), 0) / totalSessions);
             const avgCam = Math.round(historyArray.reduce((acc, s) => acc + Number(s.bodyLanguageScore ?? 50), 0) / totalSessions);
             const totalSwitches = historyArray.reduce((acc, s) => acc + Number(s.tabSwitchCount ?? 0), 0);
             const avgIntegrity = Math.max(15, 100 - Math.round((totalSwitches / totalSessions) * 15));
+            const sessionWord = totalSessions === 1 ? "session" : "sessions";
+            const switchWord = totalSwitches === 1 ? "tab switch" : "tab switches";
 
             if (sidebarTipEl) {
                 sidebarTipEl.textContent = avgAns < 65
@@ -782,21 +767,22 @@
             document.getElementById('analytics-answer-score').textContent = `${avgAns}%`;
             document.getElementById('analytics-answer-badge').textContent = avgAns >= 70 ? "Strong" : "Needs Work";
             document.getElementById('analytics-answer-bar').style.width = `${avgAns}%`;
-            document.getElementById('analytics-answer-desc').textContent = `Average answer evaluation across ${totalSessions} session(s).`;
+            document.getElementById('analytics-answer-desc').textContent = `Average answer evaluation across ${totalSessions} ${sessionWord}.`;
 
             document.getElementById('analytics-camera-score').textContent = `${avgCam}%`;
             document.getElementById('analytics-camera-badge').textContent = avgCam >= 70 ? "Active" : "Check Feed";
             document.getElementById('analytics-camera-bar').style.width = `${avgCam}%`;
-            document.getElementById('analytics-camera-desc').textContent = `Camera presence & posture telemetry across ${totalSessions} session(s).`;
+            document.getElementById('analytics-camera-desc').textContent = `Camera presence & posture telemetry across ${totalSessions} ${sessionWord}.`;
 
             document.getElementById('analytics-integrity-score').textContent = `${avgIntegrity}%`;
-            document.getElementById('analytics-integrity-badge').textContent = totalSwitches === 0 ? "Clean" : `${totalSwitches} Switch(es)`;
+            document.getElementById('analytics-integrity-badge').textContent = totalSwitches === 0
+                ? "Clean"
+                : `${totalSwitches} ${totalSwitches === 1 ? "Switch" : "Switches"}`;
             document.getElementById('analytics-integrity-bar').style.width = `${avgIntegrity}%`;
             document.getElementById('analytics-integrity-desc').textContent = totalSwitches === 0
                 ? "Zero tab switches recorded across sessions."
-                : `${totalSwitches} total tab switch(es) recorded.`;
+                : `${totalSwitches} total ${switchWord} recorded.`;
 
-            // Role-wise breakdown
             if (roleBreakdownEl) {
                 const roleMap = {};
                 historyArray.forEach(s => {
@@ -807,11 +793,12 @@
                 });
                 const roleRows = Object.entries(roleMap).map(([roleName, info]) => {
                     const rAvg = Math.round(info.sum / info.count);
+                    const rSessionWord = info.count === 1 ? "session" : "sessions";
                     return `
                         <div class="bg-gray-900/60 p-4 rounded-xl border border-gray-800 flex items-center justify-between">
                             <div>
                                 <div class="text-xs font-bold text-white">${roleName}</div>
-                                <div class="text-[11px] text-gray-400">${info.count} session(s)</div>
+                                <div class="text-[11px] text-gray-400">${info.count} ${rSessionWord}</div>
                             </div>
                             <div class="flex items-center space-x-3">
                                 <div class="w-28 bg-gray-800 h-2 rounded-full overflow-hidden">
@@ -948,17 +935,110 @@
 
         function exportSessionHistory() {
             if (!allUserSessions || allUserSessions.length === 0) {
-                showToast('No session history available to export.', 'info');
+                showToast('No session history available to export as PDF.', 'info');
                 return;
             }
-            const blob = new Blob([JSON.stringify(allUserSessions, null, 2)], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `intervai_sessions_${new Date().toISOString().slice(0, 10)}.json`;
-            a.click();
-            URL.revokeObjectURL(url);
-            showToast('Session history exported!', 'success');
+
+            const candidateLabel = (activeCurrentUser && (activeCurrentUser.fullName || activeCurrentUser.username)) || "Candidate";
+            const fileDate = new Date().toISOString().slice(0, 10);
+
+            if (window.jspdf && window.jspdf.jsPDF) {
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+                const pageWidth = doc.internal.pageSize.getWidth();
+                const pageHeight = doc.internal.pageSize.getHeight();
+                const margin = 42;
+                let y = 50;
+
+                const ensureSpace = (needed = 24) => {
+                    if (y + needed > pageHeight - 45) {
+                        doc.addPage();
+                        y = 50;
+                    }
+                };
+
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(18);
+                doc.setTextColor(15, 23, 42);
+                doc.text('intervAI Interview Evaluation Report', margin, y);
+                y += 22;
+
+                doc.setFont('helvetica', 'normal');
+                doc.setFontSize(10);
+                doc.setTextColor(71, 85, 105);
+                doc.text(`Candidate: ${candidateLabel}   |   Generated: ${new Date().toLocaleString('en-IN')}`, margin, y);
+                y += 14;
+                doc.text(`Total Sessions: ${allUserSessions.length}`, margin, y);
+                y += 18;
+
+                doc.setDrawColor(203, 213, 225);
+                doc.line(margin, y, pageWidth - margin, y);
+                y += 20;
+
+                allUserSessions.forEach((sess, i) => {
+                    ensureSpace(78);
+                    doc.setFont('helvetica', 'bold');
+                    doc.setFontSize(12);
+                    doc.setTextColor(15, 23, 42);
+                    doc.text(`${i + 1}. ${sess.role || 'Interview'} (${sess.category || 'General'} | ${sess.language || 'English'})`, margin, y);
+                    y += 16;
+
+                    doc.setFont('helvetica', 'normal');
+                    doc.setFontSize(10);
+                    doc.setTextColor(51, 65, 85);
+                    doc.text(
+                        `Date: ${sess.date || '-'}   |   Score: ${sess.score ?? 0}/100   |   Answered: ${sess.questionsAnswered ?? 0}   |   Duration: ${sess.durationSeconds ?? 0}s   |   Tab Switches: ${sess.tabSwitchCount ?? 0}`,
+                        margin,
+                        y
+                    );
+                    y += 18;
+
+                    const transcript = (sess.fullReport && Array.isArray(sess.fullReport.transcript)) ? sess.fullReport.transcript : [];
+                    transcript.slice(0, 15).forEach((item, idx) => {
+                        ensureSpace(44);
+                        const qLines = doc.splitTextToSize(`Q${idx + 1}: ${item.question || ''}`, pageWidth - margin * 2 - 8);
+                        doc.setFont('helvetica', 'bold');
+                        doc.setFontSize(9.5);
+                        doc.setTextColor(30, 41, 59);
+                        doc.text(qLines, margin + 6, y);
+                        y += qLines.length * 12 + 2;
+
+                        const aLines = doc.splitTextToSize(`A: ${item.answer || ''}`, pageWidth - margin * 2 - 8);
+                        doc.setFont('helvetica', 'normal');
+                        doc.setTextColor(71, 85, 105);
+                        doc.text(aLines, margin + 6, y);
+                        y += aLines.length * 12 + 8;
+                    });
+
+                    y += 10;
+                    doc.setDrawColor(226, 232, 240);
+                    doc.line(margin, y, pageWidth - margin, y);
+                    y += 18;
+                });
+
+                doc.save(`intervai_report_${fileDate}.pdf`);
+                showToast('Report PDF exported successfully!', 'success');
+                return;
+            }
+
+            // Fallback print-to-PDF window if jsPDF script was blocked
+            const printWin = window.open('', '_blank');
+            if (printWin) {
+                const rowsHtml = allUserSessions.map((s, idx) => `
+                    <div style="margin-bottom:18px;border-bottom:1px solid #cbd5e1;padding-bottom:12px;">
+                        <h3>${idx + 1}. ${s.role} (${s.category} • ${s.language || 'English'}) — Score: ${s.score}/100</h3>
+                        <p>Date: ${s.date} | Answered: ${s.questionsAnswered || 0} | Duration: ${s.durationSeconds || 0}s | Tab Switches: ${s.tabSwitchCount || 0}</p>
+                    </div>
+                `).join('');
+                printWin.document.write(`
+                    <html><head><title>intervAI Report</title></head><body style="font-family:sans-serif;padding:24px;">
+                    <h2>intervAI Interview Report — ${candidateLabel}</h2>${rowsHtml}</body></html>
+                `);
+                printWin.document.close();
+                printWin.focus();
+                printWin.print();
+                showToast('Opened PDF print dialog.', 'success');
+            }
         }
 
         function clearSessionHistory() {
@@ -1026,11 +1106,7 @@
             renderSessionHistory(allUserSessions);
         }
 
-        document.addEventListener('DOMContentLoaded', () => {
-            refreshDashboardState();
-            checkBackendEngineStatus();
-        });
-
+        document.addEventListener('DOMContentLoaded', refreshDashboardState);
         window.addEventListener('focus', refreshDashboardState);
 
         function saveAccountSettings() {
