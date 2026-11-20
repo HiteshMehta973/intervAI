@@ -21,13 +21,13 @@
 </head>
 <body class="h-full flex flex-col justify-between p-6 selection:bg-cyan-500 selection:text-white">
 
-    <!-- Mandatory Camera Required Overlay -->
-    <div id="camera-required-overlay" class="fixed inset-0 bg-slate-950/95 backdrop-blur-md z-50 hidden flex flex-col items-center justify-center p-6 text-center">
+    <!-- Mandatory Camera & Face Visibility Overlay -->
+    <div id="camera-required-overlay" class="fixed inset-0 bg-slate-950/95 backdrop-blur-md z-50 flex flex-col items-center justify-center p-6 text-center">
         <div class="bg-slate-900 border border-cyan-500/50 p-8 rounded-3xl max-w-md shadow-2xl space-y-4">
             <div class="w-12 h-12 bg-cyan-500/20 text-cyan-400 rounded-full flex items-center justify-center mx-auto text-xl font-bold">📷</div>
-            <h2 class="text-xl font-bold text-white">Camera Is Mandatory</h2>
-            <p id="camera-required-reason" class="text-xs text-gray-300">Live camera feed is required so your facial expressions and presence can be checked during the interview.</p>
-            <button onclick="requestMandatoryCamera()" class="px-6 py-2.5 bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold rounded-xl transition-all shadow-lg cursor-pointer">Enable Camera Now</button>
+            <h2 class="text-xl font-bold text-white">Camera & Face Visibility Mandatory</h2>
+            <p id="camera-required-reason" class="text-xs text-gray-300">Please turn on your camera and keep your face clearly visible in the frame to start and continue the interview.</p>
+            <button onclick="verifyCameraAndFaceGate()" class="px-6 py-2.5 bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold rounded-xl transition-all shadow-lg cursor-pointer">Turn On & Verify Camera</button>
         </div>
     </div>
 
@@ -79,7 +79,7 @@
 
                 <div class="mt-4 bg-slate-950/60 p-4 rounded-2xl border border-slate-800/80 space-y-2">
                     <p id="avatar-reaction-text" class="hidden text-xs text-indigo-300 italic border-b border-slate-800/80 pb-2"></p>
-                    <p id="ai-question-text" class="text-sm md:text-base font-medium text-gray-200 leading-relaxed">Initializing secure connection with FastAPI neural backend...</p>
+                    <p id="ai-question-text" class="text-sm md:text-base font-medium text-gray-200 leading-relaxed">Waiting for mandatory camera & face verification...</p>
                 </div>
                 <div id="interim-feedback-box" class="hidden px-4 py-2.5 bg-cyan-950/60 border border-cyan-800/60 text-cyan-300 text-xs rounded-xl mt-2"></div>
             </div>
@@ -103,11 +103,11 @@
             </div>
         </div>
 
-        <!-- Right Column: Webcam + Live Expression/Camera Diagnostics + Clean Transcript -->
+        <!-- Right Column: Webcam + Live Expression/Face Diagnostics + Clean Transcript -->
         <div class="flex flex-col space-y-6">
             <div class="bg-slate-900/80 backdrop-blur-xl border border-slate-800/90 rounded-3xl overflow-hidden shadow-xl flex flex-col p-4">
                 <div class="flex justify-between items-center mb-3 px-1">
-                    <span class="text-xs font-semibold uppercase tracking-wider text-gray-400">Live Camera & Expression Check</span>
+                    <span class="text-xs font-semibold uppercase tracking-wider text-gray-400">Live Camera & Facial Check</span>
                     <span id="security-badge" class="flex items-center space-x-1.5 px-2.5 py-1 bg-emerald-500/10 border border-emerald-500/30 rounded-full">
                         <span class="w-2 h-2 bg-emerald-400 rounded-full animate-ping"></span>
                         <span id="security-badge-text" class="text-[10px] text-emerald-400 font-mono tracking-wider">SECURE</span>
@@ -118,7 +118,7 @@
                     <canvas id="vision-canvas" class="hidden"></canvas>
                 </div>
                 <div id="live-camera-status" class="mt-2.5 px-2 flex items-center justify-between text-[11px] text-gray-400 font-mono">
-                    <span id="cam-presence-label">Camera: Checking...</span>
+                    <span id="cam-presence-label">Face: Checking...</span>
                     <span id="cam-switches-label">Tab Switches: 0</span>
                 </div>
             </div>
@@ -138,6 +138,7 @@
     <script>
         const BACKEND_URL = "";
         let sessionId = "";
+        let sessionStarted = false;
         let currentQuestionIndex = 0;
         let maxQuestions = 15;
         let allQuestionsCompleted = false;
@@ -148,16 +149,21 @@
         let secondsElapsed = 0;
         const originalPageTitle = document.title;
 
-        // Camera & Tab-Switch Telemetry State
+        // Camera, Face & Tab-Switch Telemetry State
         let cameraActive = false;
+        let faceVisible = false;
         let activeMediaStream = null;
         let tabSwitchCount = 0;
         let visionInterval = null;
         let prevFrameData = null;
         let presenceSamples = 0;
-        let activeFrames = 0;
+        let faceDetectedSamples = 0;
         let motionSum = 0;
         let brightnessSum = 0;
+
+        const faceDetector = ('FaceDetector' in window)
+            ? new window.FaceDetector({ fastMode: true, maxDetectedFaces: 2 })
+            : null;
 
         const currentUserObj = (() => {
             try { return JSON.parse(localStorage.getItem('intervai_current_user') || 'null'); }
@@ -170,6 +176,26 @@
         const isHindiSession = activeLanguage.toLowerCase() === "hindi";
         const candidateId = (currentUserObj && (currentUserObj.username || currentUserObj.email || currentUserObj.fullName)) || "guest_candidate";
         const candidateName = (currentUserObj && (currentUserObj.fullName || currentUserObj.username)) || "Candidate";
+
+        const askedHistoryStorageKey = `intervai_asked_${candidateId}_${activeRole}_${activeLanguage}`.toLowerCase();
+
+        function getClientAskedQuestions() {
+            try {
+                const list = JSON.parse(localStorage.getItem(askedHistoryStorageKey) || '[]');
+                return Array.isArray(list) ? list : [];
+            } catch {
+                return [];
+            }
+        }
+
+        function saveClientAskedQuestion(qText) {
+            if (!qText) return;
+            const list = getClientAskedQuestions();
+            if (!list.includes(qText)) {
+                list.push(qText);
+                localStorage.setItem(askedHistoryStorageKey, JSON.stringify(list.slice(-80)));
+            }
+        }
 
         document.getElementById('interview-subtitle').textContent = `Target Role: ${activeRole} (${activeCategory} | ${activeLanguage})`;
         if (isHindiSession) {
@@ -197,6 +223,7 @@
         function startTimer() {
             if (timerInterval) clearInterval(timerInterval);
             timerInterval = setInterval(() => {
+                if (!cameraActive || !faceVisible) return;
                 secondsElapsed++;
                 const mins = String(Math.floor(secondsElapsed / 60)).padStart(2, '0');
                 const secs = String(secondsElapsed % 60).padStart(2, '0');
@@ -228,116 +255,182 @@
             document.getElementById('cheat-warning').classList.add('hidden');
         };
 
-        // --- MANDATORY CAMERA ACCESS & LIVE EXPRESSION CHECK ---
-        window.requestMandatoryCamera = async function() {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-                activeMediaStream = stream;
-                const videoEl = document.getElementById('candidate-video');
-                videoEl.srcObject = stream;
-                await videoEl.play().catch(() => {});
-
-                const track = stream.getVideoTracks()[0];
-                cameraActive = Boolean(track && track.readyState === 'live' && track.enabled);
-                if (track) {
-                    track.onended = () => {
-                        cameraActive = false;
-                        document.getElementById('cam-presence-label').textContent = 'Camera: Disconnected!';
-                        document.getElementById('camera-required-reason').textContent =
-                            "Your camera stopped during the interview. Please re-enable your camera to continue.";
-                        document.getElementById('camera-required-overlay').classList.remove('hidden');
-                    };
-                }
-
-                if (cameraActive) {
-                    document.getElementById('camera-required-overlay').classList.add('hidden');
-                    document.getElementById('cam-presence-label').textContent = 'Camera: Live & Checking';
-                } else {
-                    throw new Error("Video track inactive");
-                }
-            } catch (e) {
-                cameraActive = false;
-                console.error("Mandatory webcam error:", e);
-                document.getElementById('cam-presence-label').textContent = 'Camera: Required!';
-                document.getElementById('camera-required-reason').textContent =
-                    "Camera access is mandatory to check facial expressions and presence. Please allow camera permission and click 'Enable Camera Now'.";
-                document.getElementById('camera-required-overlay').classList.remove('hidden');
-            }
-        };
-
-        function startVisionTelemetry() {
+        // --- REAL-TIME CAMERA & FACE PRESENCE CHECK ---
+        async function evaluateFrameFaceAndExpression() {
             const video = document.getElementById('candidate-video');
             const vCanvas = document.getElementById('vision-canvas');
             const vCtx = vCanvas.getContext('2d', { willReadFrequently: true });
             vCanvas.width = 64;
             vCanvas.height = 48;
 
-            if (visionInterval) clearInterval(visionInterval);
-            visionInterval = setInterval(() => {
-                const track = activeMediaStream && activeMediaStream.getVideoTracks()[0];
-                const streamLive = Boolean(track && track.readyState === 'live' && track.enabled && video.readyState >= 2);
+            const track = activeMediaStream && activeMediaStream.getVideoTracks()[0];
+            const streamLive = Boolean(track && track.readyState === 'live' && track.enabled && video.readyState >= 2 && video.videoWidth > 0);
 
-                if (!streamLive) {
-                    cameraActive = false;
-                    document.getElementById('cam-presence-label').textContent = 'Camera: Off — Required!';
-                    document.getElementById('camera-required-overlay').classList.remove('hidden');
-                    return;
+            if (!streamLive) {
+                cameraActive = false;
+                faceVisible = false;
+                return { cameraOk: false, faceOk: false, expression: "Camera Off", brightness: 0, motion: 0 };
+            }
+
+            cameraActive = true;
+            vCtx.drawImage(video, 0, 0, vCanvas.width, vCanvas.height);
+            const frame = vCtx.getImageData(0, 0, vCanvas.width, vCanvas.height).data;
+
+            let lumaSum = 0;
+            let diffSum = 0;
+            let skinLikePixels = 0;
+            let totalChecked = 0;
+            const pixelCount = frame.length / 4;
+
+            for (let i = 0; i < frame.length; i += 4) {
+                const r = frame[i], g = frame[i + 1], b = frame[i + 2];
+                const luma = 0.299 * r + 0.587 * g + 0.114 * b;
+                lumaSum += luma;
+
+                if (prevFrameData) {
+                    const prevLuma = 0.299 * prevFrameData[i] + 0.587 * prevFrameData[i + 1] + 0.114 * prevFrameData[i + 2];
+                    diffSum += Math.abs(luma - prevLuma);
                 }
 
-                cameraActive = true;
-                vCtx.drawImage(video, 0, 0, vCanvas.width, vCanvas.height);
-                const frame = vCtx.getImageData(0, 0, vCanvas.width, vCanvas.height).data;
+                // Focus on center area where candidate face is positioned
+                const px = (i / 4) % vCanvas.width;
+                const py = Math.floor((i / 4) / vCanvas.width);
+                if (px > 12 && px < 52 && py > 6 && py < 42) {
+                    totalChecked++;
+                    if (r > 60 && g > 35 && b > 20 && r > g && r > b && (r - b) > 12 && luma > 35) {
+                        skinLikePixels++;
+                    }
+                }
+            }
 
-                let lumaSum = 0;
-                let diffSum = 0;
-                const pixelCount = frame.length / 4;
+            prevFrameData = new Uint8ClampedArray(frame);
+            const avgBrightness = lumaSum / pixelCount;
+            const avgMotion = diffSum / pixelCount;
+            const skinRatio = totalChecked > 0 ? skinLikePixels / totalChecked : 0;
 
-                for (let i = 0; i < frame.length; i += 4) {
-                    const luma = 0.299 * frame[i] + 0.587 * frame[i + 1] + 0.114 * frame[i + 2];
-                    lumaSum += luma;
-                    if (prevFrameData) {
-                        const prevLuma = 0.299 * prevFrameData[i] + 0.587 * prevFrameData[i + 1] + 0.114 * prevFrameData[i + 2];
-                        diffSum += Math.abs(luma - prevLuma);
+            let detectedFacesCount = 0;
+            if (faceDetector) {
+                try {
+                    const faces = await faceDetector.detect(video);
+                    detectedFacesCount = faces ? faces.length : 0;
+                } catch {
+                    detectedFacesCount = 0;
+                }
+            }
+
+            // Face is considered visible if FaceDetector sees a face OR camera has clear lighting + center face/person features
+            const hasFace = detectedFacesCount > 0 || (avgBrightness > 28 && skinRatio >= 0.08);
+
+            presenceSamples++;
+            brightnessSum += avgBrightness;
+            motionSum += avgMotion;
+            if (hasFace) faceDetectedSamples++;
+            faceVisible = hasFace;
+
+            let expression = "Face Not Visible";
+            if (!hasFace) {
+                expression = avgBrightness <= 25 ? "Camera Dark / Off" : "Face Not In Frame";
+            } else if (avgMotion > 8.5) {
+                expression = "Expressive";
+            } else if (avgMotion > 2.2) {
+                expression = "Attentive";
+            } else {
+                expression = "Calm & Focused";
+            }
+
+            return {
+                cameraOk: true,
+                faceOk: hasFace,
+                expression,
+                brightness: avgBrightness,
+                motion: avgMotion
+            };
+        }
+
+        window.verifyCameraAndFaceGate = async function() {
+            const reasonEl = document.getElementById('camera-required-reason');
+            try {
+                if (!activeMediaStream || !activeMediaStream.getVideoTracks()[0] || activeMediaStream.getVideoTracks()[0].readyState !== 'live') {
+                    const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                    activeMediaStream = stream;
+                    const videoEl = document.getElementById('candidate-video');
+                    videoEl.srcObject = stream;
+                    await videoEl.play().catch(() => {});
+
+                    const track = stream.getVideoTracks()[0];
+                    if (track) {
+                        track.onended = () => {
+                            cameraActive = false;
+                            faceVisible = false;
+                            document.getElementById('cam-presence-label').textContent = 'Face: Camera Stopped!';
+                            reasonEl.textContent = "Your camera turned off. Please turn it back on so your facial expressions can be checked.";
+                            document.getElementById('camera-required-overlay').classList.remove('hidden');
+                        };
                     }
                 }
 
-                prevFrameData = new Uint8ClampedArray(frame);
-                const avgBrightness = lumaSum / pixelCount;
-                const avgMotion = diffSum / pixelCount;
+                // Wait briefly for video frames to stabilize and check face presence
+                await new Promise(r => setTimeout(r, 450));
+                const check = await evaluateFrameFaceAndExpression();
 
-                presenceSamples++;
-                brightnessSum += avgBrightness;
-                motionSum += avgMotion;
+                if (check.cameraOk && check.faceOk) {
+                    document.getElementById('camera-required-overlay').classList.add('hidden');
+                    document.getElementById('cam-presence-label').textContent = `Face: ${check.expression}`;
+                    return true;
+                } else {
+                    document.getElementById('cam-presence-label').textContent = `Face: ${check.expression}`;
+                    reasonEl.textContent = "Camera is on, but your face is not clearly visible in front of the camera. Please position your face in the center and ensure proper light.";
+                    document.getElementById('camera-required-overlay').classList.remove('hidden');
+                    return false;
+                }
+            } catch (e) {
+                cameraActive = false;
+                faceVisible = false;
+                console.error("Camera permission/init error:", e);
+                document.getElementById('cam-presence-label').textContent = 'Face: Camera Off';
+                reasonEl.textContent = "Camera permission is required to check facial expressions. Please allow camera access and click 'Turn On & Verify Camera'.";
+                document.getElementById('camera-required-overlay').classList.remove('hidden');
+                return false;
+            }
+        };
 
-                const isPresent = avgBrightness > 22;
-                if (isPresent) activeFrames++;
+        function startVisionTelemetry() {
+            if (visionInterval) clearInterval(visionInterval);
+            visionInterval = setInterval(async () => {
+                const check = await evaluateFrameFaceAndExpression();
+                document.getElementById('cam-presence-label').textContent = `Face: ${check.expression}`;
 
-                const expressionState = avgMotion > 9 ? 'Expressive' : avgMotion > 2.5 ? 'Attentive' : 'Calm';
-                document.getElementById('cam-presence-label').textContent = isPresent
-                    ? `Live Feed: ${expressionState}`
-                    : 'Live Feed: Low Light';
-            }, 1000);
+                if (!check.cameraOk || !check.faceOk) {
+                    document.getElementById('camera-required-reason').textContent = !check.cameraOk
+                        ? "Camera is turned off or blocked. Turn on your camera to continue the interview."
+                        : "Please keep your face clearly visible in the camera frame so facial expressions can be checked.";
+                    document.getElementById('camera-required-overlay').classList.remove('hidden');
+                } else if (sessionStarted) {
+                    document.getElementById('camera-required-overlay').classList.add('hidden');
+                }
+            }, 900);
         }
 
         function buildCameraMetrics() {
-            const presenceRatio = presenceSamples > 0 ? activeFrames / presenceSamples : 0;
+            const faceRatio = presenceSamples > 0 ? faceDetectedSamples / presenceSamples : 0;
             const avgBrightness = presenceSamples > 0 ? brightnessSum / presenceSamples : 0;
             const avgMotion = presenceSamples > 0 ? motionSum / presenceSamples : 0;
 
-            const presencePts = Math.round(presenceRatio * 45);
+            const presencePts = Math.round(faceRatio * 45);
             const lightingPts = avgBrightness >= 45 ? 20 : avgBrightness >= 22 ? 12 : 4;
             const stabilityPts = avgMotion <= 14 ? 25 : 14;
             const switchPenalty = Math.min(25, tabSwitchCount * 8);
-            const bodyLanguageScore = Math.max(25, Math.min(98, presencePts + lightingPts + stabilityPts + 10 - switchPenalty));
+            const bodyLanguageScore = Math.max(20, Math.min(98, presencePts + lightingPts + stabilityPts + 10 - switchPenalty));
 
-            const expressionLabel = avgMotion > 9
-                ? 'Expressive facial & head movement observed on camera'
-                : avgMotion > 2.5
-                    ? 'Attentive, engaged camera presence'
-                    : 'Calm, steady facial posture on camera';
+            const expressionLabel = avgMotion > 8.5
+                ? `Expressive facial movement detected (${Math.round(faceRatio * 100)}% face visibility)`
+                : avgMotion > 2.2
+                    ? `Attentive facial expressions detected (${Math.round(faceRatio * 100)}% face visibility)`
+                    : `Calm facial expression detected (${Math.round(faceRatio * 100)}% face visibility)`;
 
             return {
                 cameraActive,
+                faceVisible,
                 tabSwitchCount,
                 bodyLanguageScore,
                 avgBrightness: Math.round(avgBrightness),
@@ -411,21 +504,15 @@
                 }
 
                 const textarea = document.getElementById('candidate-answer');
-                const combined = `${committedSpeechText} ${interimText}`.trim();
-                textarea.value = combined;
+                textarea.value = `${committedSpeechText} ${interimText}`.trim();
             };
 
             recognition.onend = () => {
-                // Keep whatever text was already spoken even when browser pauses after silence
                 const currentVal = document.getElementById('candidate-answer').value.trim();
                 if (currentVal) committedSpeechText = currentVal;
 
                 if (isListening && !manualMicStop) {
-                    try {
-                        recognition.start();
-                    } catch {
-                        isListening = false;
-                    }
+                    try { recognition.start(); } catch { isListening = false; }
                 } else {
                     isListening = false;
                     const micBtn = document.getElementById('mic-btn');
@@ -447,25 +534,21 @@
             if (!isListening) {
                 committedSpeechText = document.getElementById('candidate-answer').value.trim();
                 manualMicStop = false;
-                try {
-                    recognition.start();
-                } catch {}
+                try { recognition.start(); } catch {}
                 isListening = true;
                 micText.textContent = isHindiSession ? "सुन रहा हूँ (रुकने पर भी सुरक्षित)..." : "Listening (Pause-Safe)...";
                 micBtn.className = "px-3.5 py-1.5 bg-cyan-500/20 border border-cyan-500/40 text-cyan-300 text-xs rounded-xl flex items-center space-x-1.5 animate-pulse shadow-md cursor-pointer";
             } else {
                 manualMicStop = true;
                 isListening = false;
-                try {
-                    recognition.stop();
-                } catch {}
+                try { recognition.stop(); } catch {}
                 committedSpeechText = document.getElementById('candidate-answer').value.trim();
                 micText.textContent = "Start Voice Mic";
                 micBtn.className = "px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-gray-300 text-xs rounded-xl flex items-center space-x-1.5 transition-all shadow-md cursor-pointer";
             }
         };
 
-        // --- TEXT-TO-SPEECH (STRICT HINDI / ENGLISH VOICE) ---
+        // --- TEXT-TO-SPEECH ---
         function pickVoiceForLanguage(hindi) {
             if (!('speechSynthesis' in window)) return null;
             const voices = window.speechSynthesis.getVoices() || [];
@@ -506,15 +589,21 @@
             }
         }
 
-        // --- START SESSION ---
+        // --- START SESSION ONLY AFTER CAMERA + FACE VERIFIED ---
         async function startSession() {
             syncEndButtonState();
-            await requestMandatoryCamera();
-
             startTimer();
             startVisionTelemetry();
             init3DAvatarScene();
             initSpeechRecognition();
+
+            const verified = await verifyCameraAndFaceGate();
+            if (!verified || sessionStarted) return;
+
+            sessionStarted = true;
+            document.getElementById('ai-question-text').textContent = isHindiSession
+                ? "कैमरा और चेहरा सत्यापित हो गया है। पहला प्रश्न तैयार किया जा रहा है..."
+                : "Camera and face verified. Preparing your first question...";
 
             try {
                 const res = await fetch(`${BACKEND_URL}/api/interview/start`, {
@@ -524,7 +613,8 @@
                         role: activeRole,
                         category: activeCategory,
                         language: activeLanguage,
-                        candidate_id: candidateId
+                        candidate_id: candidateId,
+                        client_recent_questions: getClientAskedQuestions()
                     })
                 });
                 const result = await res.json();
@@ -533,6 +623,7 @@
                     maxQuestions = Number((result.data && result.data.max_questions) || 15);
                     document.getElementById('question-counter').textContent = `Question 1 of ${maxQuestions}`;
                     syncEndButtonState();
+                    saveClientAskedQuestion(result.data.question);
                     speakAvatarTurn(result.data.question);
                 }
             } catch (e) {
@@ -542,10 +633,8 @@
 
         // --- SUBMIT ANSWER ---
         window.submitAnswer = async function() {
-            if (!cameraActive) {
-                await requestMandatoryCamera();
-                if (!cameraActive) return;
-            }
+            const verified = await verifyCameraAndFaceGate();
+            if (!verified) return;
 
             if (isListening) toggleVoiceInput();
             const answerInput = document.getElementById('candidate-answer');
@@ -574,52 +663,65 @@
                         role: activeRole,
                         category: activeCategory,
                         language: activeLanguage,
-                        candidate_id: candidateId
+                        candidate_id: candidateId,
+                        client_recent_questions: getClientAskedQuestions()
                     })
                 });
                 const result = await res.json();
 
-                if (result.success) {
-                    const qScore = Number(result.score_awarded ?? (result.metrics && result.metrics.overall_score) ?? 15);
-                    const qFeedback = result.interim_feedback || "";
-                    const avatarReply = result.avatar_reply || qFeedback;
+                const qScore = Number(result.score_awarded ?? (result.metrics && result.metrics.overall_score) ?? 15);
+                const qFeedback = result.interim_feedback || (
+                    isHindiSession ? "आपका उत्तर दर्ज कर लिया गया है।" : "Your response has been recorded."
+                );
+                const avatarReply = result.avatar_reply || qFeedback;
 
-                    sessionTranscript.push({
-                        questionNumber: currentQuestionIndex + 1,
-                        question: currentQ,
-                        answer: answerText,
-                        score: qScore,
-                        feedback: qFeedback,
-                        avatarReply: avatarReply,
-                        metrics: result.metrics || null
-                    });
-                    updateTranscriptUI(currentQ, answerText, avatarReply);
+                sessionTranscript.push({
+                    questionNumber: questionsAnsweredCount + 1,
+                    question: currentQ,
+                    answer: answerText,
+                    score: qScore,
+                    feedback: qFeedback,
+                    avatarReply: avatarReply,
+                    metrics: result.metrics || null
+                });
+                updateTranscriptUI(currentQ, answerText, avatarReply);
 
-                    totalScoreAccumulator += qScore;
-                    questionsAnsweredCount++;
+                totalScoreAccumulator += qScore;
+                questionsAnsweredCount++;
+                syncEndButtonState();
+
+                const fbBox = document.getElementById('interim-feedback-box');
+                fbBox.classList.remove('hidden');
+                fbBox.textContent = `${isHindiSession ? "उत्तर समीक्षा" : "Answer Feedback"}: ${qFeedback}`;
+
+                if (result.is_completed || questionsAnsweredCount >= maxQuestions) {
+                    allQuestionsCompleted = true;
                     syncEndButtonState();
-
-                    const fbBox = document.getElementById('interim-feedback-box');
-                    fbBox.classList.remove('hidden');
-                    fbBox.textContent = `${isHindiSession ? "उत्तर समीक्षा" : "Answer Feedback"}: ${qFeedback}`;
-
-                    if (result.is_completed || questionsAnsweredCount >= maxQuestions || !result.next_question) {
-                        allQuestionsCompleted = true;
-                        syncEndButtonState();
-                        concludeSession();
-                    } else {
-                        currentQuestionIndex++;
-                        document.getElementById('question-counter').textContent = `Question ${currentQuestionIndex + 1} of ${maxQuestions}`;
-                        speakAvatarTurn(result.next_question.question, avatarReply);
-                    }
+                    concludeSession();
+                    return;
                 }
+
+                const nextIdx = (result.next_question && typeof result.next_question.question_index === "number")
+                    ? result.next_question.question_index
+                    : currentQuestionIndex + 1;
+
+                const nextQText = (result.next_question && result.next_question.question)
+                    ? result.next_question.question
+                    : (isHindiSession
+                        ? `प्रश्न ${nextIdx + 1}: ${activeRole} के काम में एक व्यावहारिक चुनौती और उसका समाधान कैसे करेंगे?`
+                        : `Question ${nextIdx + 1}: How would you handle a practical challenge in ${activeRole}?`);
+
+                currentQuestionIndex = nextIdx;
+                saveClientAskedQuestion(nextQText);
+                document.getElementById('question-counter').textContent = `Question ${Math.min(questionsAnsweredCount + 1, maxQuestions)} of ${maxQuestions}`;
+                speakAvatarTurn(nextQText, avatarReply);
             } catch (e) {
                 console.error("Evaluation error:", e);
             } finally {
                 btn.disabled = false;
                 btn.innerHTML = `<span>Submit Answer & Next</span><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>`;
             }
-        }
+        };
 
         async function concludeSession() {
             if (!allQuestionsCompleted && questionsAnsweredCount < maxQuestions) {
