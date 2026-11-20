@@ -81,7 +81,7 @@ def _generate_start_response(role: str, category: str, language: str):
 
     try:
         response = client.models.generate_content(
-            model='gemini-2.5-flash',
+            model='gemini-3.8-flash',
             contents=prompt,
             config=types.GenerateContentConfig(temperature=0.85)
         )
@@ -147,16 +147,16 @@ def evaluate_answer(data: AnswerSubmissionRequest):
     Candidate's Answer: "{answer_text}"
 
     CRITICAL INSTRUCTION FOR QUESTION GENERATION:
-    - {level_guide}
-    - Keep the next question short, clear, and easy to understand.
-    - You MUST NOT repeat any of the following previously asked questions under any circumstances:
+- {level_guide}
+- Keep the next question short, clear, and easy to understand.
+- You MUST NOT repeat any of the following previously asked questions under any circumstances:
     {json.dumps(previous_questions, indent=2)}
 
     Analyze the answer silently across 4 key metrics (score each out of 100):
-    1. completeness
-    2. correctness
-    3. relevance
-    4. clarity
+1. completeness
+2. correctness
+3. relevance
+4. clarity
 
     Calculate an "overall_score" as the integer average of these four metrics (0-100).
     Provide encouraging, simple, constructive feedback ("feedback") in {language}.
@@ -168,7 +168,7 @@ def evaluate_answer(data: AnswerSubmissionRequest):
 
     try:
         response = client.models.generate_content(
-            model='gemini-2.5-flash',
+            model='gemini-3.8-flash',
             contents=prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
@@ -238,17 +238,17 @@ def sandbox_evaluate(data: SandboxEvaluationRequest):
     Candidate's Answer: "{data.answer}"
 
     Evaluate this candidate answer clearly in simple, easy-to-understand English. Provide:
-    1. A precise overall score from 40 to 98 based on the depth of the answer ("score").
-    2. Exactly 2 specific strengths observed in this answer ("strengths" as a list of strings).
-    3. Exactly 2 distinct constructive areas for improvement ("improvements" as a list of strings).
-    4. An insightful, simple model response or suggestion ("model_suggestion").
+1. A precise overall score from 40 to 98 based on the depth of the answer ("score").
+2. Exactly 2 specific strengths observed in this answer ("strengths" as a list of strings).
+3. Exactly 2 distinct constructive areas for improvement ("improvements" as a list of strings).
+4. An insightful, simple model response or suggestion ("model_suggestion").
 
     Return a valid JSON object with keys: "score", "strengths", "improvements", "model_suggestion".
     """
 
     try:
         response = client.models.generate_content(
-            model='gemini-2.5-flash',
+            model='gemini-3.8-flash',
             contents=prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
