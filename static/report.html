@@ -161,9 +161,18 @@
 
             if (!report) {
                 document.getElementById('report-role-title').textContent = "No Completed Session Found";
-                document.getElementById('report-meta-summary').textContent = "Start an interview in the room to generate a live dynamic report.";
+                document.getElementById('report-meta-summary').textContent = "Complete an interview in the room to generate a live dynamic report.";
                 document.getElementById('report-final-score').innerHTML = `0<span class="text-xs text-gray-400 font-normal">/100</span>`;
-                document.getElementById('transcript-container').innerHTML = `<p class="text-xs text-gray-400 italic">No answered questions recorded yet.</p>`;
+                document.getElementById('metric-body-desc').textContent = "No camera telemetry recorded yet.";
+                document.getElementById('metric-speaking-desc').textContent = "No answers submitted yet.";
+                document.getElementById('metric-problem-desc').textContent = "No problem-solving data yet.";
+                document.getElementById('metric-integrity-desc').textContent = "No tab-switch telemetry yet.";
+                document.getElementById('improvements-container').innerHTML =
+                    `<p class="text-xs text-gray-400 italic">No session data available.</p>`;
+                document.getElementById('suggestions-container').innerHTML =
+                    `<p class="text-xs text-gray-400 italic">Start a session to receive tailored coaching suggestions.</p>`;
+                document.getElementById('transcript-container').innerHTML =
+                    `<p class="text-xs text-gray-400 italic">No answered questions recorded yet.</p>`;
                 return;
             }
 
@@ -179,67 +188,79 @@
             const totalWords = transcript.reduce((sum, item) => sum + ((item.answer || "").trim().split(/\s+/).filter(Boolean).length), 0);
             const avgWords = totalAnswered > 0 ? Math.round(totalWords / totalAnswered) : 0;
 
-            const answerScore = Number(report.answerScore ?? (totalAnswered > 0 ? Math.round(transcript.reduce((s, x) => s + Number(x.score || 70), 0) / totalAnswered) : 0));
+            const answerScore = Number(report.answerScore ?? (totalAnswered > 0 ? Math.round(transcript.reduce((s, x) => s + Number(x.score || 20), 0) / totalAnswered) : 0));
             const bodyScore = Number(cam.bodyLanguageScore ?? 50);
-            const problemScore = totalAnswered > 0 ? Math.min(98, Math.max(35, Math.round(answerScore * 0.85 + Math.min(15, avgWords / 3)))) : 0;
-            const integrityScore = Math.max(20, 100 - Number(cam.tabSwitchCount || 0) * 15);
-            const overallScore = Number(report.score ?? Math.round((answerScore + bodyScore + problemScore + integrityScore) / 4));
+            const problemScore = totalAnswered > 0 ? Math.min(98, Math.max(15, Math.round(answerScore * 0.85 + Math.min(15, avgWords / 3)))) : 0;
+            const integrityScore = Math.max(15, 100 - Number(cam.tabSwitchCount || 0) * 15);
+            const overallScore = Number(report.score ?? (totalAnswered > 0 ? Math.round(answerScore * 0.75 + bodyScore * 0.25) : bodyScore));
 
-            document.getElementById('report-category-badge').textContent = `${report.category || "General"} • ${report.language || "English"}`;
-            document.getElementById('report-role-title').textContent = `${report.role || "Candidate"} — ${report.username || "Candidate"}`;
+            const roleName = report.role || "Candidate";
+            const categoryName = report.category || "General";
+            const languageName = report.language || "English";
+            const userName = report.username || "Candidate";
+            const durationSec = Number(report.durationSeconds || 0);
+            const tabSwitches = Number(cam.tabSwitchCount || 0);
+
+            document.getElementById('report-category-badge').textContent = `${categoryName} • ${languageName}`;
+            document.getElementById('report-role-title').textContent = `${roleName} — ${userName}`;
             document.getElementById('report-meta-summary').textContent =
-                `Answered ${totalAnswered} question(s) in ${report.durationSeconds || 0}s • Avg ${avgWords} words/answer • Tab switches: ${cam.tabSwitchCount || 0}`;
+                `Answered ${totalAnswered} question(s) in ${durationSec}s • Avg ${avgWords} words/answer • Tab switches: ${tabSwitches}`;
             document.getElementById('report-final-score').innerHTML = `${overallScore}<span class="text-xs text-gray-400 font-normal">/100</span>`;
 
             document.getElementById('metric-body-score').textContent = `${bodyScore}%`;
             document.getElementById('metric-body-desc').textContent = cam.cameraActive
-                ? cam.expressionLabel
+                ? `${cam.expressionLabel}${cam.avgBrightness ? ` (Light: ${cam.avgBrightness})` : ""}`
                 : "Camera was off or permission denied during session.";
 
             document.getElementById('metric-speaking-score').textContent = totalAnswered > 0 ? `${answerScore}%` : "N/A";
             document.getElementById('metric-speaking-desc').textContent = totalAnswered > 0
-                ? `Average answer depth across ${totalAnswered} response(s) (${avgWords} words avg).`
-                : "No answers submitted before ending session.";
+                ? `Average answer evaluation across ${totalAnswered} response(s) (${avgWords} words avg).`
+                : "No answers submitted in this session.";
 
             document.getElementById('metric-problem-score').textContent = totalAnswered > 0 ? `${problemScore}%` : "N/A";
             document.getElementById('metric-problem-desc').textContent = totalAnswered > 0
-                ? "Evaluated from response structure, detail, and question scores."
-                : "Complete at least one question to measure problem solving.";
+                ? "Derived from response depth, clarity, and per-question scores."
+                : "Answer questions to evaluate problem solving.";
 
             document.getElementById('metric-integrity-score').textContent = `${integrityScore}%`;
-            document.getElementById('metric-integrity-desc').textContent = (cam.tabSwitchCount || 0) === 0
-                ? "No tab switches or screen focus losses detected."
-                : `${cam.tabSwitchCount} tab/screen switch event(s) detected.`;
+            document.getElementById('metric-integrity-desc').textContent = tabSwitches === 0
+                ? "No tab switches detected during the interview."
+                : `${tabSwitches} tab switch event(s) flagged during session.`;
 
-            // Dynamic Improvement Areas
+            // Dynamic Improvement Areas based on actual camera, tab switches, and answers
             const improvements = [];
             if (!cam.cameraActive) {
                 improvements.push({
-                    title: "Enable Webcam Feed",
-                    desc: "Keep your camera on during the interview so visual presence and posture can be evaluated."
+                    title: "Camera Feed Not Active",
+                    desc: "Allow webcam access during the interview so facial presence, posture, and lighting can be monitored."
+                });
+            } else if (cam.avgBrightness && cam.avgBrightness < 35) {
+                improvements.push({
+                    title: "Improve Front Lighting",
+                    desc: "Face a light source or lamp so your expressions and camera feed remain clear and well-lit."
                 });
             }
-            if ((cam.tabSwitchCount || 0) > 0) {
+            if (tabSwitches > 0) {
                 improvements.push({
-                    title: `Reduce Screen Switching (${cam.tabSwitchCount}x)`,
-                    desc: "Avoid switching tabs or leaving the room window while answering questions."
+                    title: `Tab Switching Detected (${tabSwitches}x)`,
+                    desc: "Stay on the intervAI room tab while answering questions to maintain full screen integrity."
                 });
             }
             if (totalAnswered === 0) {
                 improvements.push({
-                    title: "Complete Interview Questions",
-                    desc: "Submit answers to questions before ending the session so full scoring can be calculated."
+                    title: "No Answers Submitted",
+                    desc: "Complete and submit answers to the interview questions so your full evaluation can be scored."
                 });
-            } else if (avgWords < 20) {
+            } else if (answerScore < 50 || avgWords < 12) {
                 improvements.push({
-                    title: "Expand Answer Explanations",
-                    desc: `Your average response was ${avgWords} words. Add clear examples and reasoning to deepen your answers.`
+                    title: "Avoid Short or Incomplete Replies",
+                    desc: `Your average answer was ${avgWords} words with an answer score of ${answerScore}%. Explain your points clearly instead of giving short replies.`
                 });
             }
             if (improvements.length === 0) {
                 improvements.push({
-                    title: "Add Measurable Outcomes",
-                    desc: "Include concrete numbers, trade-offs, or real examples in upcoming answers to push scores even higher."
+                    title: "Add Concrete Examples & Trade-Offs",
+                    desc: "Include real project examples, steps taken, and key trade-offs to make strong answers even more thorough."
                 });
             }
 
@@ -253,15 +274,19 @@
                 </div>
             `).join('');
 
-            // Dynamic AI Coach Suggestions
+            // Dynamic AI Coach Suggestions based on actual session performance
             const suggestions = [
                 {
-                    title: `Practice More ${report.role || "Role"} Questions`,
-                    desc: `Try another ${report.category || "Technical"} session in ${report.language || "English"} and test different scenarios.`
+                    title: answerScore >= 70 ? `Level Up Your ${roleName} Practice` : `Build Core ${roleName} Fundamentals`,
+                    desc: answerScore >= 70
+                        ? `Strong responses in ${categoryName}. Try another session in ${languageName} with deeper real-world scenarios.`
+                        : `Practice answering ${categoryName} questions in ${languageName} using 2-3 clear sentences with a simple example.`
                 },
                 {
-                    title: "Structure Answers Clearly",
-                    desc: "State your main point first, give a brief example or steps, and finish with the result."
+                    title: cam.cameraActive && tabSwitches === 0 ? "Keep Up Strong Focus & Presence" : "Maintain Distraction-Free Room Habits",
+                    desc: cam.cameraActive && tabSwitches === 0
+                        ? "Your camera stayed active with zero tab switches—keep that same focus in your next round."
+                        : "Keep your camera on and stay in a single browser tab from start to finish."
                 }
             ];
 
@@ -275,10 +300,10 @@
                 </div>
             `).join('');
 
-            // Dynamic Q&A Transcript
+            // Dynamic Q&A Transcript Breakdown
             if (transcript.length === 0) {
                 document.getElementById('transcript-container').innerHTML =
-                    `<p class="text-xs text-gray-400 italic">Session ended before any answers were submitted.</p>`;
+                    `<p class="text-xs text-gray-400 italic">No answers were submitted before the session ended.</p>`;
             } else {
                 document.getElementById('transcript-container').innerHTML = transcript.map((item, idx) => `
                     <div class="p-5 rounded-xl bg-gray-900/60 border border-gray-800 space-y-3">
@@ -288,7 +313,7 @@
                         </div>
                         <p class="text-sm font-bold text-white">"${item.question}"</p>
                         <div class="p-3 rounded-lg bg-gray-900 text-xs text-gray-300 border border-gray-800 space-y-1.5">
-                            <p><strong class="text-indigo-400">Your Answer:</strong> ${item.answer}</p>
+                            <p><strong class="text-indigo-400">Candidate Answer:</strong> ${item.answer}</p>
                             ${item.feedback ? `<p class="text-gray-400"><strong class="text-cyan-400">AI Feedback:</strong> ${item.feedback}</p>` : ""}
                         </div>
                     </div>

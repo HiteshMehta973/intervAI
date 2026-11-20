@@ -135,6 +135,7 @@
         let questionsAnsweredCount = 0;
         let timerInterval = null;
         let secondsElapsed = 0;
+        const originalPageTitle = document.title;
 
         // Camera & Tab-Switch Telemetry State
         let cameraActive = false;
@@ -195,11 +196,14 @@
                 lastTabViolationAt = now;
 
                 tabSwitchCount++;
+                document.title = `⚠️ Tab Switch Detected (${tabSwitchCount}) - intervAI`;
                 document.getElementById('cam-switches-label').textContent = `Tab Switches: ${tabSwitchCount}`;
                 document.getElementById('security-badge-text').textContent = `FLAGGED (${tabSwitchCount})`;
                 document.getElementById('cheat-warning-detail').textContent =
                     `Switching to another tab was detected (${tabSwitchCount} time(s)). Please stay on this interview tab.`;
                 document.getElementById('cheat-warning').classList.remove('hidden');
+            } else {
+                document.title = originalPageTitle;
             }
         });
 
@@ -430,8 +434,8 @@
                 const result = await res.json();
 
                 if (result.success) {
-                    const qScore = Number(result.score_awarded ?? (result.metrics && result.metrics.overall_score) ?? 70);
-                    const qFeedback = result.interim_feedback || "Response evaluated.";
+                    const qScore = Number(result.score_awarded ?? (result.metrics && result.metrics.overall_score) ?? 15);
+                    const qFeedback = result.interim_feedback || "Response recorded.";
 
                     sessionTranscript.push({
                         questionNumber: currentQuestionIndex + 1,
@@ -449,7 +453,7 @@
 
                     const fbBox = document.getElementById('interim-feedback-box');
                     fbBox.classList.remove('hidden');
-                    fbBox.textContent = `Feedback (${qScore}/100): ${qFeedback}`;
+                    fbBox.textContent = `Feedback: ${qFeedback}`;
 
                     if (result.is_completed || questionsAnsweredCount >= maxQuestions || !result.next_question) {
                         allQuestionsCompleted = true;
