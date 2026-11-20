@@ -85,7 +85,7 @@ def _is_duplicate_question(candidate_q: str, history: List[str]) -> bool:
 
 
 def _generate_with_retry(prompt: str, json_mode: bool = False, temperature: float = 0.9):
-    models_to_try = ["gemini-2.5-flash", "gemini-2.5-flash-lite"]
+    models_to_try = ["gemini-3.5-flash-lite", "gemini-2.5-flash"]
     config = types.GenerateContentConfig(
         response_mime_type="application/json" if json_mode else "text/plain",
         temperature=temperature
