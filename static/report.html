@@ -64,15 +64,15 @@
         <!-- Header Score Overview Card -->
         <div class="glass-panel rounded-2xl p-6 sm:p-8 flex flex-col md:flex-row items-center justify-between gap-6 border border-cyan-500/30 shadow-2xl">
             <div>
-                <span id="report-category-badge" class="text-xs font-mono uppercase tracking-widest text-cyan-400 bg-cyan-500/10 px-3 py-1 rounded-full border border-cyan-500/20">Technical & Coding</span>
-                <h1 id="report-role-title" class="text-2xl sm:text-3xl font-extrabold text-white mt-3 mb-1">Senior Software Engineer (L5)</h1>
-                <p class="text-xs text-gray-400">Comprehensive AI behavioral, technical, and visual diagnostic report.</p>
+                <span id="report-category-badge" class="text-xs font-mono uppercase tracking-widest text-cyan-400 bg-cyan-500/10 px-3 py-1 rounded-full border border-cyan-500/20">Interview Session</span>
+                <h1 id="report-role-title" class="text-2xl sm:text-3xl font-extrabold text-white mt-3 mb-1">Candidate Session</h1>
+                <p id="report-meta-summary" class="text-xs text-gray-400">Dynamic session telemetry report.</p>
             </div>
             
             <div class="flex items-center space-x-4 bg-gray-900/80 px-6 py-4 rounded-2xl border border-gray-800 shrink-0">
                 <div class="text-right">
                     <div class="text-xs text-gray-400 uppercase font-mono">Overall Rating</div>
-                    <div id="report-final-score" class="text-3xl font-extrabold text-emerald-400">93<span class="text-xs text-gray-400 font-normal">/100</span></div>
+                    <div id="report-final-score" class="text-3xl font-extrabold text-emerald-400">0<span class="text-xs text-gray-400 font-normal">/100</span></div>
                 </div>
                 <div class="w-14 h-14 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 text-2xl">
                     <i class="fa-solid fa-trophy"></i>
@@ -80,24 +80,24 @@
             </div>
         </div>
 
-        <!-- Detailed Performance Metrics Grid (Body Language, Speaking Skills, Problem Solving, Communication) -->
+        <!-- Detailed Performance Metrics Grid -->
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <div class="glass-panel rounded-xl p-5">
                 <div class="flex items-center justify-between mb-2">
-                    <span class="text-xs text-gray-400 font-semibold uppercase">Body Language</span>
+                    <span class="text-xs text-gray-400 font-semibold uppercase">Camera & Body</span>
                     <i class="fa-solid fa-user-check text-cyan-400 text-sm"></i>
                 </div>
-                <div class="text-2xl font-extrabold text-white mb-1">91%</div>
-                <p class="text-[11px] text-gray-400">Strong posture confidence and consistent eye contact.</p>
+                <div id="metric-body-score" class="text-2xl font-extrabold text-white mb-1">--%</div>
+                <p id="metric-body-desc" class="text-[11px] text-gray-400">Waiting for session data...</p>
             </div>
 
             <div class="glass-panel rounded-xl p-5">
                 <div class="flex items-center justify-between mb-2">
-                    <span class="text-xs text-gray-400 font-semibold uppercase">Speaking Skills</span>
+                    <span class="text-xs text-gray-400 font-semibold uppercase">Answer Depth</span>
                     <i class="fa-solid fa-microphone-lines text-purple-400 text-sm"></i>
                 </div>
-                <div class="text-2xl font-extrabold text-white mb-1">94%</div>
-                <p class="text-[11px] text-gray-400">Optimal pacing (138 WPM) with minimal filler words.</p>
+                <div id="metric-speaking-score" class="text-2xl font-extrabold text-white mb-1">--%</div>
+                <p id="metric-speaking-desc" class="text-[11px] text-gray-400">Waiting for session data...</p>
             </div>
 
             <div class="glass-panel rounded-xl p-5">
@@ -105,17 +105,17 @@
                     <span class="text-xs text-gray-400 font-semibold uppercase">Problem Solving</span>
                     <i class="fa-solid fa-brain text-indigo-400 text-sm"></i>
                 </div>
-                <div class="text-2xl font-extrabold text-white mb-1">95%</div>
-                <p class="text-[11px] text-gray-400">Clear architectural decomposition and edge case handling.</p>
+                <div id="metric-problem-score" class="text-2xl font-extrabold text-white mb-1">--%</div>
+                <p id="metric-problem-desc" class="text-[11px] text-gray-400">Waiting for session data...</p>
             </div>
 
             <div class="glass-panel rounded-xl p-5">
                 <div class="flex items-center justify-between mb-2">
-                    <span class="text-xs text-gray-400 font-semibold uppercase">Communication</span>
-                    <i class="fa-solid fa-comments text-emerald-400 text-sm"></i>
+                    <span class="text-xs text-gray-400 font-semibold uppercase">Screen Integrity</span>
+                    <i class="fa-solid fa-shield-halved text-emerald-400 text-sm"></i>
                 </div>
-                <div class="text-2xl font-extrabold text-white mb-1">90%</div>
-                <p class="text-[11px] text-gray-400">Crisp explanations using structured reasoning.</p>
+                <div id="metric-integrity-score" class="text-2xl font-extrabold text-white mb-1">--%</div>
+                <p id="metric-integrity-desc" class="text-[11px] text-gray-400">Waiting for session data...</p>
             </div>
         </div>
 
@@ -127,22 +127,7 @@
                     <i class="fa-solid fa-triangle-exclamation text-amber-400"></i>
                     <span>Improvement Areas</span>
                 </h3>
-                <div class="space-y-3 text-xs text-gray-300">
-                    <div class="p-3.5 rounded-xl bg-gray-900 border border-gray-800 flex items-start space-x-3">
-                        <i class="fa-solid fa-circle-xmark text-red-400 mt-0.5"></i>
-                        <div>
-                            <p class="font-bold text-white mb-0.5">System Constraints Discussion</p>
-                            <p class="text-gray-400">Spend more time discussing CAP theorem limits before choosing database technologies.</p>
-                        </div>
-                    </div>
-                    <div class="p-3.5 rounded-xl bg-gray-900 border border-gray-800 flex items-start space-x-3">
-                        <i class="fa-solid fa-circle-xmark text-red-400 mt-0.5"></i>
-                        <div>
-                            <p class="font-bold text-white mb-0.5">Hand Gestures Control</p>
-                            <p class="text-gray-400">Occasional rapid hand movements detected on camera during complex technical explanations.</p>
-                        </div>
-                    </div>
-                </div>
+                <div id="improvements-container" class="space-y-3 text-xs text-gray-300"></div>
             </div>
 
             <!-- Tailored Suggestions -->
@@ -151,54 +136,14 @@
                     <i class="fa-solid fa-wand-magic-sparkles text-cyan-400"></i>
                     <span>AI Coach Suggestions</span>
                 </h3>
-                <div class="space-y-3 text-xs text-gray-300">
-                    <div class="p-3.5 rounded-xl bg-gray-900 border border-gray-800 flex items-start space-x-3">
-                        <i class="fa-solid fa-circle-check text-emerald-400 mt-0.5"></i>
-                        <div>
-                            <p class="font-bold text-white mb-0.5">Practice Mock Scalability Loops</p>
-                            <p class="text-gray-400">Run 2 more System Design mock sessions focusing heavily on distributed caching patterns.</p>
-                        </div>
-                    </div>
-                    <div class="p-3.5 rounded-xl bg-gray-900 border border-gray-800 flex items-start space-x-3">
-                        <i class="fa-solid fa-circle-check text-emerald-400 mt-0.5"></i>
-                        <div>
-                            <p class="font-bold text-white mb-0.5">Maintain Vocal Pauses</p>
-                            <p class="text-gray-400">Incorporate brief 2-second pauses before answering tricky questions to project deeper composure.</p>
-                        </div>
-                    </div>
-                </div>
+                <div id="suggestions-container" class="space-y-3 text-xs text-gray-300"></div>
             </div>
         </div>
 
         <!-- Q&A Transcript Breakdown -->
         <div class="glass-panel rounded-2xl p-6 sm:p-8 space-y-6">
             <h3 class="text-lg font-bold text-white">Full Q&A Transcript & AI Notes</h3>
-            
-            <div class="space-y-4">
-                <!-- Q1 -->
-                <div class="p-5 rounded-xl bg-gray-900/60 border border-gray-800 space-y-3">
-                    <div class="flex items-center justify-between text-xs font-mono text-cyan-400">
-                        <span>Question 1 of 4</span>
-                        <span>Score: 95/100</span>
-                    </div>
-                    <p class="text-sm font-bold text-white">"Can you describe how virtual DOM works in React and why it optimizes rendering performance?"</p>
-                    <div class="p-3 rounded-lg bg-gray-900 text-xs text-gray-300 border border-gray-800">
-                        <strong class="text-indigo-400">Candidate Response Summary:</strong> Explained reconciliation, diffing algorithm, and batched DOM mutations.
-                    </div>
-                </div>
-
-                <!-- Q2 -->
-                <div class="p-5 rounded-xl bg-gray-900/60 border border-gray-800 space-y-3">
-                    <div class="flex items-center justify-between text-xs font-mono text-cyan-400">
-                        <span>Question 2 of 4</span>
-                        <span>Score: 92/100</span>
-                    </div>
-                    <p class="text-sm font-bold text-white">"How do you handle asynchronous state management and race conditions in modern JavaScript applications?"</p>
-                    <div class="p-3 rounded-lg bg-gray-900 text-xs text-gray-300 border border-gray-800">
-                        <strong class="text-indigo-400">Candidate Response Summary:</strong> Discussed AbortController for fetch cancellations, promises, and async/await error boundaries.
-                    </div>
-                </div>
-            </div>
+            <div id="transcript-container" class="space-y-4"></div>
         </div>
 
     </main>
@@ -207,6 +152,150 @@
     <footer class="bg-gray-950 border-t border-gray-800 py-8 relative z-10 mt-auto text-center text-xs text-gray-500">
         <p>intervAI Career Intelligence Engine &copy; 2026</p>
     </footer>
+
+    <!-- Dynamic Report Renderer -->
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            const raw = localStorage.getItem('intervai_latest_report');
+            const report = raw ? JSON.parse(raw) : null;
+
+            if (!report) {
+                document.getElementById('report-role-title').textContent = "No Completed Session Found";
+                document.getElementById('report-meta-summary').textContent = "Start an interview in the room to generate a live dynamic report.";
+                document.getElementById('report-final-score').innerHTML = `0<span class="text-xs text-gray-400 font-normal">/100</span>`;
+                document.getElementById('transcript-container').innerHTML = `<p class="text-xs text-gray-400 italic">No answered questions recorded yet.</p>`;
+                return;
+            }
+
+            const transcript = Array.isArray(report.transcript) ? report.transcript : [];
+            const cam = report.camera || {
+                cameraActive: false,
+                tabSwitchCount: 0,
+                bodyLanguageScore: 50,
+                expressionLabel: "Camera telemetry unavailable"
+            };
+
+            const totalAnswered = transcript.length;
+            const totalWords = transcript.reduce((sum, item) => sum + ((item.answer || "").trim().split(/\s+/).filter(Boolean).length), 0);
+            const avgWords = totalAnswered > 0 ? Math.round(totalWords / totalAnswered) : 0;
+
+            const answerScore = Number(report.answerScore ?? (totalAnswered > 0 ? Math.round(transcript.reduce((s, x) => s + Number(x.score || 70), 0) / totalAnswered) : 0));
+            const bodyScore = Number(cam.bodyLanguageScore ?? 50);
+            const problemScore = totalAnswered > 0 ? Math.min(98, Math.max(35, Math.round(answerScore * 0.85 + Math.min(15, avgWords / 3)))) : 0;
+            const integrityScore = Math.max(20, 100 - Number(cam.tabSwitchCount || 0) * 15);
+            const overallScore = Number(report.score ?? Math.round((answerScore + bodyScore + problemScore + integrityScore) / 4));
+
+            document.getElementById('report-category-badge').textContent = `${report.category || "General"} • ${report.language || "English"}`;
+            document.getElementById('report-role-title').textContent = `${report.role || "Candidate"} — ${report.username || "Candidate"}`;
+            document.getElementById('report-meta-summary').textContent =
+                `Answered ${totalAnswered} question(s) in ${report.durationSeconds || 0}s • Avg ${avgWords} words/answer • Tab switches: ${cam.tabSwitchCount || 0}`;
+            document.getElementById('report-final-score').innerHTML = `${overallScore}<span class="text-xs text-gray-400 font-normal">/100</span>`;
+
+            document.getElementById('metric-body-score').textContent = `${bodyScore}%`;
+            document.getElementById('metric-body-desc').textContent = cam.cameraActive
+                ? cam.expressionLabel
+                : "Camera was off or permission denied during session.";
+
+            document.getElementById('metric-speaking-score').textContent = totalAnswered > 0 ? `${answerScore}%` : "N/A";
+            document.getElementById('metric-speaking-desc').textContent = totalAnswered > 0
+                ? `Average answer depth across ${totalAnswered} response(s) (${avgWords} words avg).`
+                : "No answers submitted before ending session.";
+
+            document.getElementById('metric-problem-score').textContent = totalAnswered > 0 ? `${problemScore}%` : "N/A";
+            document.getElementById('metric-problem-desc').textContent = totalAnswered > 0
+                ? "Evaluated from response structure, detail, and question scores."
+                : "Complete at least one question to measure problem solving.";
+
+            document.getElementById('metric-integrity-score').textContent = `${integrityScore}%`;
+            document.getElementById('metric-integrity-desc').textContent = (cam.tabSwitchCount || 0) === 0
+                ? "No tab switches or screen focus losses detected."
+                : `${cam.tabSwitchCount} tab/screen switch event(s) detected.`;
+
+            // Dynamic Improvement Areas
+            const improvements = [];
+            if (!cam.cameraActive) {
+                improvements.push({
+                    title: "Enable Webcam Feed",
+                    desc: "Keep your camera on during the interview so visual presence and posture can be evaluated."
+                });
+            }
+            if ((cam.tabSwitchCount || 0) > 0) {
+                improvements.push({
+                    title: `Reduce Screen Switching (${cam.tabSwitchCount}x)`,
+                    desc: "Avoid switching tabs or leaving the room window while answering questions."
+                });
+            }
+            if (totalAnswered === 0) {
+                improvements.push({
+                    title: "Complete Interview Questions",
+                    desc: "Submit answers to questions before ending the session so full scoring can be calculated."
+                });
+            } else if (avgWords < 20) {
+                improvements.push({
+                    title: "Expand Answer Explanations",
+                    desc: `Your average response was ${avgWords} words. Add clear examples and reasoning to deepen your answers.`
+                });
+            }
+            if (improvements.length === 0) {
+                improvements.push({
+                    title: "Add Measurable Outcomes",
+                    desc: "Include concrete numbers, trade-offs, or real examples in upcoming answers to push scores even higher."
+                });
+            }
+
+            document.getElementById('improvements-container').innerHTML = improvements.map(imp => `
+                <div class="p-3.5 rounded-xl bg-gray-900 border border-gray-800 flex items-start space-x-3">
+                    <i class="fa-solid fa-circle-xmark text-red-400 mt-0.5"></i>
+                    <div>
+                        <p class="font-bold text-white mb-0.5">${imp.title}</p>
+                        <p class="text-gray-400">${imp.desc}</p>
+                    </div>
+                </div>
+            `).join('');
+
+            // Dynamic AI Coach Suggestions
+            const suggestions = [
+                {
+                    title: `Practice More ${report.role || "Role"} Questions`,
+                    desc: `Try another ${report.category || "Technical"} session in ${report.language || "English"} and test different scenarios.`
+                },
+                {
+                    title: "Structure Answers Clearly",
+                    desc: "State your main point first, give a brief example or steps, and finish with the result."
+                }
+            ];
+
+            document.getElementById('suggestions-container').innerHTML = suggestions.map(sug => `
+                <div class="p-3.5 rounded-xl bg-gray-900 border border-gray-800 flex items-start space-x-3">
+                    <i class="fa-solid fa-circle-check text-emerald-400 mt-0.5"></i>
+                    <div>
+                        <p class="font-bold text-white mb-0.5">${sug.title}</p>
+                        <p class="text-gray-400">${sug.desc}</p>
+                    </div>
+                </div>
+            `).join('');
+
+            // Dynamic Q&A Transcript
+            if (transcript.length === 0) {
+                document.getElementById('transcript-container').innerHTML =
+                    `<p class="text-xs text-gray-400 italic">Session ended before any answers were submitted.</p>`;
+            } else {
+                document.getElementById('transcript-container').innerHTML = transcript.map((item, idx) => `
+                    <div class="p-5 rounded-xl bg-gray-900/60 border border-gray-800 space-y-3">
+                        <div class="flex items-center justify-between text-xs font-mono text-cyan-400">
+                            <span>Question ${idx + 1} of ${totalAnswered}</span>
+                            <span>Score: ${item.score ?? "--"}/100</span>
+                        </div>
+                        <p class="text-sm font-bold text-white">"${item.question}"</p>
+                        <div class="p-3 rounded-lg bg-gray-900 text-xs text-gray-300 border border-gray-800 space-y-1.5">
+                            <p><strong class="text-indigo-400">Your Answer:</strong> ${item.answer}</p>
+                            ${item.feedback ? `<p class="text-gray-400"><strong class="text-cyan-400">AI Feedback:</strong> ${item.feedback}</p>` : ""}
+                        </div>
+                    </div>
+                `).join('');
+            }
+        });
+    </script>
 
     <!-- Background Animation Script -->
     <script>

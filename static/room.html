@@ -26,7 +26,7 @@
         <div class="bg-slate-900 border border-red-500 p-8 rounded-3xl max-w-md shadow-2xl space-y-4">
             <div class="w-12 h-12 bg-red-500/20 text-red-400 rounded-full flex items-center justify-center mx-auto text-xl font-bold">⚠️</div>
             <h2 class="text-xl font-bold text-red-400">Security Warning: Screen Switching Detected!</h2>
-            <p class="text-xs text-gray-300">Leaving the interview room or switching tabs is monitored as potential cheating. Please remain focused.</p>
+            <p id="cheat-warning-detail" class="text-xs text-gray-300">Leaving the interview room or switching tabs is monitored. Please stay on this screen.</p>
             <button onclick="dismissWarning()" class="px-6 py-2.5 bg-red-600 hover:bg-red-500 text-white text-xs font-semibold rounded-xl transition-all shadow-lg">I Understand, Return to Room</button>
         </div>
     </div>
@@ -92,18 +92,23 @@
             </div>
         </div>
 
-        <!-- Right Column: Webcam + Clean Transcript -->
+        <!-- Right Column: Webcam + Live Camera Diagnostics + Clean Transcript -->
         <div class="flex flex-col space-y-6">
             <div class="bg-slate-900/80 backdrop-blur-xl border border-slate-800/90 rounded-3xl overflow-hidden shadow-xl flex flex-col p-4">
                 <div class="flex justify-between items-center mb-3 px-1">
                     <span class="text-xs font-semibold uppercase tracking-wider text-gray-400">Candidate Feed & Anti-Cheat</span>
-                    <span class="flex items-center space-x-1.5 px-2.5 py-1 bg-red-500/10 border border-red-500/30 rounded-full">
-                        <span class="w-2 h-2 bg-red-500 rounded-full animate-ping"></span>
-                        <span class="text-[10px] text-red-400 font-mono tracking-wider">SECURE</span>
+                    <span id="security-badge" class="flex items-center space-x-1.5 px-2.5 py-1 bg-emerald-500/10 border border-emerald-500/30 rounded-full">
+                        <span class="w-2 h-2 bg-emerald-400 rounded-full animate-ping"></span>
+                        <span id="security-badge-text" class="text-[10px] text-emerald-400 font-mono tracking-wider">SECURE</span>
                     </span>
                 </div>
                 <div class="relative w-full h-44 bg-slate-950 rounded-2xl overflow-hidden border border-slate-800 shadow-inner">
                     <video id="candidate-video" autoplay playsinline muted class="w-full h-full object-cover"></video>
+                    <canvas id="vision-canvas" class="hidden"></canvas>
+                </div>
+                <div id="live-camera-status" class="mt-2.5 px-2 flex items-center justify-between text-[11px] text-gray-400 font-mono">
+                    <span id="cam-presence-label">Camera: Waiting...</span>
+                    <span id="cam-switches-label">Tab Switches: 0</span>
                 </div>
             </div>
 
@@ -129,10 +134,27 @@
         let timerInterval = null;
         let secondsElapsed = 0;
 
+        // Camera & Anti-Cheat Telemetry State
+        let cameraActive = false;
+        let tabSwitchCount = 0;
+        let blurCount = 0;
+        let visionInterval = null;
+        let prevFrameData = null;
+        let presenceSamples = 0;
+        let activeFrames = 0;
+        let motionSum = 0;
+        let brightnessSum = 0;
+
+        const currentUserObj = (() => {
+            try { return JSON.parse(localStorage.getItem('intervai_current_user') || 'null'); }
+            catch { return null; }
+        })();
+
         const activeRole = localStorage.getItem('intervai_active_role') || "Software Engineer";
         const activeCategory = localStorage.getItem('intervai_active_category') || "Technical";
         const activeLanguage = localStorage.getItem('intervai_active_language') || "English";
-        
+        const candidateName = (currentUserObj && (currentUserObj.fullName || currentUserObj.username)) || "Candidate";
+
         document.getElementById('interview-subtitle').textContent = `Target Role: ${activeRole} (${activeCategory} | ${activeLanguage})`;
 
         // --- TIMER ---
@@ -146,15 +168,113 @@
             }, 1000);
         }
 
-        // --- ANTI-CHEAT SECURITY ---
+        // --- ANTI-CHEAT SECURITY (TAB CHANGE + SCREEN FOCUS LOSS) ---
+        let lastViolationAt = 0;
+        function recordViolation(type) {
+            const now = Date.now();
+            if (now - lastViolationAt < 1000) return;
+            lastViolationAt = now;
+
+            if (type === 'tab') tabSwitchCount++;
+            else blurCount++;
+
+            const totalSwitches = tabSwitchCount + blurCount;
+            document.getElementById('cam-switches-label').textContent = `Tab Switches: ${totalSwitches}`;
+            document.getElementById('security-badge-text').textContent = totalSwitches > 0 ? `FLAGGED (${totalSwitches})` : 'SECURE';
+            document.getElementById('cheat-warning-detail').textContent =
+                `Detected ${type === 'tab' ? 'tab/screen switch' : 'window focus loss'} (${totalSwitches} total). Stay on the intervAI room screen.`;
+            document.getElementById('cheat-warning').classList.remove('hidden');
+        }
+
         document.addEventListener('visibilitychange', () => {
-            if (document.hidden) {
-                document.getElementById('cheat-warning').classList.remove('hidden');
-            }
+            if (document.hidden) recordViolation('tab');
         });
+
+        window.addEventListener('blur', () => {
+            recordViolation('blur');
+        });
+
         window.dismissWarning = function() {
             document.getElementById('cheat-warning').classList.add('hidden');
         };
+
+        // --- LIVE CAMERA EXPRESSION / PRESENCE / LIGHTING TELEMETRY ---
+        function startVisionTelemetry() {
+            const video = document.getElementById('candidate-video');
+            const vCanvas = document.getElementById('vision-canvas');
+            const vCtx = vCanvas.getContext('2d', { willReadFrequently: true });
+            vCanvas.width = 64;
+            vCanvas.height = 48;
+
+            if (visionInterval) clearInterval(visionInterval);
+            visionInterval = setInterval(() => {
+                if (!cameraActive || video.readyState < 2) {
+                    document.getElementById('cam-presence-label').textContent = 'Camera: Off / Unavailable';
+                    return;
+                }
+
+                vCtx.drawImage(video, 0, 0, vCanvas.width, vCanvas.height);
+                const frame = vCtx.getImageData(0, 0, vCanvas.width, vCanvas.height).data;
+
+                let lumaSum = 0;
+                let diffSum = 0;
+                const pixelCount = frame.length / 4;
+
+                for (let i = 0; i < frame.length; i += 4) {
+                    const luma = 0.299 * frame[i] + 0.587 * frame[i + 1] + 0.114 * frame[i + 2];
+                    lumaSum += luma;
+                    if (prevFrameData) {
+                        const prevLuma = 0.299 * prevFrameData[i] + 0.587 * prevFrameData[i + 1] + 0.114 * prevFrameData[i + 2];
+                        diffSum += Math.abs(luma - prevLuma);
+                    }
+                }
+
+                prevFrameData = new Uint8ClampedArray(frame);
+                const avgBrightness = lumaSum / pixelCount;
+                const avgMotion = diffSum / pixelCount;
+
+                presenceSamples++;
+                brightnessSum += avgBrightness;
+                motionSum += avgMotion;
+
+                const isPresent = avgBrightness > 22;
+                if (isPresent) activeFrames++;
+
+                const expressionState = avgMotion > 9 ? 'Animated / Expressive' : avgMotion > 2.5 ? 'Engaged / Attentive' : 'Steady / Calm';
+                document.getElementById('cam-presence-label').textContent = isPresent
+                    ? `Feed: Active (${expressionState})`
+                    : 'Feed: Low Light / Away';
+            }, 1000);
+        }
+
+        function buildCameraMetrics() {
+            const presenceRatio = presenceSamples > 0 ? activeFrames / presenceSamples : 0;
+            const avgBrightness = presenceSamples > 0 ? brightnessSum / presenceSamples : 0;
+            const avgMotion = presenceSamples > 0 ? motionSum / presenceSamples : 0;
+            const totalSwitches = tabSwitchCount + blurCount;
+
+            // Body language score reflects camera presence, steady composure (not erratic motion), and low tab switches
+            const presencePts = Math.round(presenceRatio * 45);
+            const lightingPts = avgBrightness >= 45 ? 20 : avgBrightness >= 22 ? 12 : 4;
+            const stabilityPts = avgMotion <= 14 ? 25 : 14;
+            const switchPenalty = Math.min(25, totalSwitches * 8);
+            const bodyLanguageScore = Math.max(25, Math.min(98, presencePts + lightingPts + stabilityPts + 10 - switchPenalty));
+
+            const expressionLabel = avgMotion > 9
+                ? 'Expressive facial & head movement on camera'
+                : avgMotion > 2.5
+                    ? 'Attentive, steady camera presence'
+                    : 'Calm, still posture on camera';
+
+            return {
+                cameraActive,
+                tabSwitchCount: totalSwitches,
+                bodyLanguageScore,
+                avgBrightness: Math.round(avgBrightness),
+                avgMotion: Number(avgMotion.toFixed(1)),
+                expressionLabel
+            };
+        }
 
         // --- THREE.JS 3D AVATAR SCENE ---
         let scene, camera, renderer, avatarMesh;
@@ -247,9 +367,16 @@
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
                 document.getElementById('candidate-video').srcObject = stream;
-            } catch (e) { console.error("Webcam error:", e); }
+                cameraActive = true;
+                document.getElementById('cam-presence-label').textContent = 'Camera: Active';
+            } catch (e) {
+                cameraActive = false;
+                console.error("Webcam error:", e);
+                document.getElementById('cam-presence-label').textContent = 'Camera: Blocked / Off';
+            }
 
             startTimer();
+            startVisionTelemetry();
             init3DAvatarScene();
             initSpeechRecognition();
 
@@ -277,9 +404,6 @@
             if (!answerText) { alert("Please provide an answer."); return; }
 
             const currentQ = document.getElementById('ai-question-text').textContent;
-            sessionTranscript.push({ question: currentQ, answer: answerText });
-            updateTranscriptUI(currentQ, answerText);
-
             answerInput.value = "";
             const btn = document.getElementById('submit-btn');
             btn.disabled = true;
@@ -294,15 +418,28 @@
                 const result = await res.json();
 
                 if (result.success) {
-                    totalScoreAccumulator += result.score_awarded;
+                    const qScore = Number(result.score_awarded ?? (result.metrics && result.metrics.overall_score) ?? 70);
+                    const qFeedback = result.interim_feedback || "Response evaluated.";
+
+                    sessionTranscript.push({
+                        questionNumber: currentQuestionIndex + 1,
+                        question: currentQ,
+                        answer: answerText,
+                        score: qScore,
+                        feedback: qFeedback,
+                        metrics: result.metrics || null
+                    });
+                    updateTranscriptUI(currentQ, answerText);
+
+                    totalScoreAccumulator += qScore;
                     questionsAnsweredCount++;
 
                     const fbBox = document.getElementById('interim-feedback-box');
                     fbBox.classList.remove('hidden');
-                    fbBox.textContent = `Feedback: ${result.interim_feedback}`;
+                    fbBox.textContent = `Feedback (${qScore}/100): ${qFeedback}`;
 
                     if (result.is_completed || questionsAnsweredCount >= 15) {
-                    concludeSession();
+                        concludeSession();
                     } else {
                         currentQuestionIndex++;
                         document.getElementById('question-counter').textContent = `Question ${currentQuestionIndex + 1} of 15`;
@@ -319,10 +456,54 @@
 
         async function concludeSession() {
             if (timerInterval) clearInterval(timerInterval);
-            const finalScore = Math.round(totalScoreAccumulator / (questionsAnsweredCount || 1));
-            const reportData = { username: "Candidate", role: activeRole, category: activeCategory, score: finalScore, transcript: sessionTranscript };
+            if (visionInterval) clearInterval(visionInterval);
+
+            const avgAnswerScore = questionsAnsweredCount > 0
+                ? Math.round(totalScoreAccumulator / questionsAnsweredCount)
+                : 0;
+            const camMetrics = buildCameraMetrics();
+            const finalScore = questionsAnsweredCount > 0
+                ? Math.round(avgAnswerScore * 0.75 + camMetrics.bodyLanguageScore * 0.25)
+                : camMetrics.bodyLanguageScore;
+
+            const reportData = {
+                username: candidateName,
+                role: activeRole,
+                category: activeCategory,
+                language: activeLanguage,
+                durationSeconds: secondsElapsed,
+                questionsAnswered: questionsAnsweredCount,
+                answerScore: avgAnswerScore,
+                score: finalScore,
+                camera: camMetrics,
+                transcript: sessionTranscript,
+                createdAt: new Date().toISOString()
+            };
+
             localStorage.setItem('intervai_latest_report', JSON.stringify(reportData));
-            alert(`Interview Completed Successfully! Final Score calculated. Redirecting to Report...`);
+
+            try {
+                await fetch(`${BACKEND_URL}/api/reports/save`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        username: candidateName,
+                        role: activeRole,
+                        category: activeCategory,
+                        score: finalScore,
+                        metrics: {
+                            answer_score: avgAnswerScore,
+                            body_language_score: camMetrics.bodyLanguageScore,
+                            tab_switches: camMetrics.tabSwitchCount,
+                            questions_answered: questionsAnsweredCount
+                        },
+                        transcript: sessionTranscript
+                    })
+                });
+            } catch (e) {
+                console.warn("Report persistence warning:", e);
+            }
+
             window.location.href = "report.html";
         }
 
