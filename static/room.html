@@ -21,13 +21,23 @@
 </head>
 <body class="h-full flex flex-col justify-between p-6 selection:bg-cyan-500 selection:text-white">
 
+    <!-- Mandatory Camera Required Overlay -->
+    <div id="camera-required-overlay" class="fixed inset-0 bg-slate-950/95 backdrop-blur-md z-50 hidden flex flex-col items-center justify-center p-6 text-center">
+        <div class="bg-slate-900 border border-cyan-500/50 p-8 rounded-3xl max-w-md shadow-2xl space-y-4">
+            <div class="w-12 h-12 bg-cyan-500/20 text-cyan-400 rounded-full flex items-center justify-center mx-auto text-xl font-bold">📷</div>
+            <h2 class="text-xl font-bold text-white">Camera Is Mandatory</h2>
+            <p id="camera-required-reason" class="text-xs text-gray-300">Live camera feed is required so your facial expressions and presence can be checked during the interview.</p>
+            <button onclick="requestMandatoryCamera()" class="px-6 py-2.5 bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold rounded-xl transition-all shadow-lg cursor-pointer">Enable Camera Now</button>
+        </div>
+    </div>
+
     <!-- Anti-Cheat Tab Switch Warning Overlay -->
     <div id="cheat-warning" class="fixed inset-0 bg-red-950/80 backdrop-blur-md z-50 hidden flex flex-col items-center justify-center p-6 text-center">
         <div class="bg-slate-900 border border-red-500 p-8 rounded-3xl max-w-md shadow-2xl space-y-4">
             <div class="w-12 h-12 bg-red-500/20 text-red-400 rounded-full flex items-center justify-center mx-auto text-xl font-bold">⚠️</div>
             <h2 class="text-xl font-bold text-red-400">Security Warning: Tab Switching Detected!</h2>
             <p id="cheat-warning-detail" class="text-xs text-gray-300">Switching to another browser tab is not allowed during the interview. Please stay on this tab.</p>
-            <button onclick="dismissWarning()" class="px-6 py-2.5 bg-red-600 hover:bg-red-500 text-white text-xs font-semibold rounded-xl transition-all shadow-lg">I Understand, Return to Room</button>
+            <button onclick="dismissWarning()" class="px-6 py-2.5 bg-red-600 hover:bg-red-500 text-white text-xs font-semibold rounded-xl transition-all shadow-lg cursor-pointer">I Understand, Return to Room</button>
         </div>
     </div>
 
@@ -77,15 +87,15 @@
             <!-- Answer Box (Dual Mode: Type or Voice) -->
             <div class="bg-slate-900/80 backdrop-blur-xl border border-slate-800/90 rounded-3xl p-6 flex flex-col space-y-4 shadow-xl">
                 <div class="flex justify-between items-center">
-                    <label class="text-xs font-semibold uppercase tracking-wider text-gray-400">Response (Speak or Write)</label>
-                    <button id="mic-btn" onclick="toggleVoiceInput()" class="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-gray-300 text-xs rounded-xl flex items-center space-x-1.5 transition-all shadow-md">
+                    <label class="text-xs font-semibold uppercase tracking-wider text-gray-400">Response (Speak or Write — Pauses Kept)</label>
+                    <button id="mic-btn" onclick="toggleVoiceInput()" class="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-gray-300 text-xs rounded-xl flex items-center space-x-1.5 transition-all shadow-md cursor-pointer">
                         <svg class="w-3.5 h-3.5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"/></svg>
                         <span id="mic-status-text">Start Voice Mic</span>
                     </button>
                 </div>
                 <textarea id="candidate-answer" rows="3" class="w-full bg-slate-950/80 border border-slate-800 rounded-2xl p-4 text-sm text-gray-200 focus:outline-none focus:border-cyan-500 transition-all resize-none shadow-inner" placeholder="Type your detailed answer or click 'Start Voice Mic' to speak..."></textarea>
                 <div class="flex justify-end">
-                    <button onclick="submitAnswer()" id="submit-btn" class="px-7 py-3 bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white font-semibold text-sm rounded-2xl shadow-lg transition-all flex items-center space-x-2">
+                    <button onclick="submitAnswer()" id="submit-btn" class="px-7 py-3 bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white font-semibold text-sm rounded-2xl shadow-lg transition-all flex items-center space-x-2 cursor-pointer">
                         <span>Submit Answer & Next</span>
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
                     </button>
@@ -93,11 +103,11 @@
             </div>
         </div>
 
-        <!-- Right Column: Webcam + Live Camera Diagnostics + Clean Transcript -->
+        <!-- Right Column: Webcam + Live Expression/Camera Diagnostics + Clean Transcript -->
         <div class="flex flex-col space-y-6">
             <div class="bg-slate-900/80 backdrop-blur-xl border border-slate-800/90 rounded-3xl overflow-hidden shadow-xl flex flex-col p-4">
                 <div class="flex justify-between items-center mb-3 px-1">
-                    <span class="text-xs font-semibold uppercase tracking-wider text-gray-400">Candidate Feed & Anti-Cheat</span>
+                    <span class="text-xs font-semibold uppercase tracking-wider text-gray-400">Live Camera & Expression Check</span>
                     <span id="security-badge" class="flex items-center space-x-1.5 px-2.5 py-1 bg-emerald-500/10 border border-emerald-500/30 rounded-full">
                         <span class="w-2 h-2 bg-emerald-400 rounded-full animate-ping"></span>
                         <span id="security-badge-text" class="text-[10px] text-emerald-400 font-mono tracking-wider">SECURE</span>
@@ -108,7 +118,7 @@
                     <canvas id="vision-canvas" class="hidden"></canvas>
                 </div>
                 <div id="live-camera-status" class="mt-2.5 px-2 flex items-center justify-between text-[11px] text-gray-400 font-mono">
-                    <span id="cam-presence-label">Camera: Waiting...</span>
+                    <span id="cam-presence-label">Camera: Checking...</span>
                     <span id="cam-switches-label">Tab Switches: 0</span>
                 </div>
             </div>
@@ -140,6 +150,7 @@
 
         // Camera & Tab-Switch Telemetry State
         let cameraActive = false;
+        let activeMediaStream = null;
         let tabSwitchCount = 0;
         let visionInterval = null;
         let prevFrameData = null;
@@ -157,11 +168,12 @@
         const activeCategory = localStorage.getItem('intervai_active_category') || "Technical";
         const activeLanguage = (localStorage.getItem('intervai_active_language') || "English").trim();
         const isHindiSession = activeLanguage.toLowerCase() === "hindi";
+        const candidateId = (currentUserObj && (currentUserObj.username || currentUserObj.email || currentUserObj.fullName)) || "guest_candidate";
         const candidateName = (currentUserObj && (currentUserObj.fullName || currentUserObj.username)) || "Candidate";
 
         document.getElementById('interview-subtitle').textContent = `Target Role: ${activeRole} (${activeCategory} | ${activeLanguage})`;
         if (isHindiSession) {
-            document.getElementById('candidate-answer').placeholder = "अपना उत्तर हिंदी में टाइप करें या 'Start Voice Mic' दबाकर बोलें...";
+            document.getElementById('candidate-answer').placeholder = "अपना उत्तर हिंदी में टाइप करें या 'Start Voice Mic' दबाकर बोलें (बीच में रुकने पर भी लिखा हुआ नहीं हटेगा)...";
         }
 
         function syncEndButtonState() {
@@ -216,7 +228,43 @@
             document.getElementById('cheat-warning').classList.add('hidden');
         };
 
-        // --- LIVE CAMERA EXPRESSION / PRESENCE / LIGHTING TELEMETRY ---
+        // --- MANDATORY CAMERA ACCESS & LIVE EXPRESSION CHECK ---
+        window.requestMandatoryCamera = async function() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                activeMediaStream = stream;
+                const videoEl = document.getElementById('candidate-video');
+                videoEl.srcObject = stream;
+                await videoEl.play().catch(() => {});
+
+                const track = stream.getVideoTracks()[0];
+                cameraActive = Boolean(track && track.readyState === 'live' && track.enabled);
+                if (track) {
+                    track.onended = () => {
+                        cameraActive = false;
+                        document.getElementById('cam-presence-label').textContent = 'Camera: Disconnected!';
+                        document.getElementById('camera-required-reason').textContent =
+                            "Your camera stopped during the interview. Please re-enable your camera to continue.";
+                        document.getElementById('camera-required-overlay').classList.remove('hidden');
+                    };
+                }
+
+                if (cameraActive) {
+                    document.getElementById('camera-required-overlay').classList.add('hidden');
+                    document.getElementById('cam-presence-label').textContent = 'Camera: Live & Checking';
+                } else {
+                    throw new Error("Video track inactive");
+                }
+            } catch (e) {
+                cameraActive = false;
+                console.error("Mandatory webcam error:", e);
+                document.getElementById('cam-presence-label').textContent = 'Camera: Required!';
+                document.getElementById('camera-required-reason').textContent =
+                    "Camera access is mandatory to check facial expressions and presence. Please allow camera permission and click 'Enable Camera Now'.";
+                document.getElementById('camera-required-overlay').classList.remove('hidden');
+            }
+        };
+
         function startVisionTelemetry() {
             const video = document.getElementById('candidate-video');
             const vCanvas = document.getElementById('vision-canvas');
@@ -226,11 +274,17 @@
 
             if (visionInterval) clearInterval(visionInterval);
             visionInterval = setInterval(() => {
-                if (!cameraActive || video.readyState < 2) {
-                    document.getElementById('cam-presence-label').textContent = 'Camera: Off / Unavailable';
+                const track = activeMediaStream && activeMediaStream.getVideoTracks()[0];
+                const streamLive = Boolean(track && track.readyState === 'live' && track.enabled && video.readyState >= 2);
+
+                if (!streamLive) {
+                    cameraActive = false;
+                    document.getElementById('cam-presence-label').textContent = 'Camera: Off — Required!';
+                    document.getElementById('camera-required-overlay').classList.remove('hidden');
                     return;
                 }
 
+                cameraActive = true;
                 vCtx.drawImage(video, 0, 0, vCanvas.width, vCanvas.height);
                 const frame = vCtx.getImageData(0, 0, vCanvas.width, vCanvas.height).data;
 
@@ -258,10 +312,10 @@
                 const isPresent = avgBrightness > 22;
                 if (isPresent) activeFrames++;
 
-                const expressionState = avgMotion > 9 ? 'Animated / Expressive' : avgMotion > 2.5 ? 'Engaged / Attentive' : 'Steady / Calm';
+                const expressionState = avgMotion > 9 ? 'Expressive' : avgMotion > 2.5 ? 'Attentive' : 'Calm';
                 document.getElementById('cam-presence-label').textContent = isPresent
-                    ? `Feed: Active (${expressionState})`
-                    : 'Feed: Low Light / Away';
+                    ? `Live Feed: ${expressionState}`
+                    : 'Live Feed: Low Light';
             }, 1000);
         }
 
@@ -277,10 +331,10 @@
             const bodyLanguageScore = Math.max(25, Math.min(98, presencePts + lightingPts + stabilityPts + 10 - switchPenalty));
 
             const expressionLabel = avgMotion > 9
-                ? 'Expressive facial & head movement on camera'
+                ? 'Expressive facial & head movement observed on camera'
                 : avgMotion > 2.5
-                    ? 'Attentive, steady camera presence'
-                    : 'Calm, still posture on camera';
+                    ? 'Attentive, engaged camera presence'
+                    : 'Calm, steady facial posture on camera';
 
             return {
                 cameraActive,
@@ -324,42 +378,90 @@
             animate();
         }
 
-        // --- SPEECH RECOGNITION ---
+        // --- PAUSE-SAFE SPEECH RECOGNITION ---
         let recognition = null;
         let isListening = false;
+        let manualMicStop = false;
+        let committedSpeechText = "";
+
         function initSpeechRecognition() {
             const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-            if (SpeechRecognition) {
-                recognition = new SpeechRecognition();
-                recognition.continuous = true;
-                recognition.interimResults = true;
-                recognition.lang = isHindiSession ? "hi-IN" : "en-US";
+            if (!SpeechRecognition) return;
 
-                recognition.onresult = (event) => {
-                    let transcript = '';
-                    for (let i = event.resultIndex; i < event.results.length; i++) {
-                        transcript += event.results[i][0].transcript;
+            recognition = new SpeechRecognition();
+            recognition.continuous = true;
+            recognition.interimResults = true;
+            recognition.lang = isHindiSession ? "hi-IN" : "en-US";
+
+            recognition.onresult = (event) => {
+                let interimText = "";
+                let newFinalText = "";
+
+                for (let i = event.resultIndex; i < event.results.length; i++) {
+                    const piece = (event.results[i][0] && event.results[i][0].transcript) || "";
+                    if (event.results[i].isFinal) {
+                        newFinalText += piece + " ";
+                    } else {
+                        interimText += piece;
                     }
-                    document.getElementById('candidate-answer').value = transcript;
-                };
-            }
+                }
+
+                if (newFinalText.trim()) {
+                    committedSpeechText = (committedSpeechText + " " + newFinalText.trim()).trim();
+                }
+
+                const textarea = document.getElementById('candidate-answer');
+                const combined = `${committedSpeechText} ${interimText}`.trim();
+                textarea.value = combined;
+            };
+
+            recognition.onend = () => {
+                // Keep whatever text was already spoken even when browser pauses after silence
+                const currentVal = document.getElementById('candidate-answer').value.trim();
+                if (currentVal) committedSpeechText = currentVal;
+
+                if (isListening && !manualMicStop) {
+                    try {
+                        recognition.start();
+                    } catch {
+                        isListening = false;
+                    }
+                } else {
+                    isListening = false;
+                    const micBtn = document.getElementById('mic-btn');
+                    const micText = document.getElementById('mic-status-text');
+                    micText.textContent = "Start Voice Mic";
+                    micBtn.className = "px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-gray-300 text-xs rounded-xl flex items-center space-x-1.5 transition-all shadow-md cursor-pointer";
+                }
+            };
         }
 
         window.toggleVoiceInput = function() {
-            if (!recognition) { alert("Speech recognition is not supported in this browser. Please use Google Chrome."); return; }
+            if (!recognition) {
+                alert("Speech recognition is not supported in this browser. Please use Google Chrome.");
+                return;
+            }
             const micBtn = document.getElementById('mic-btn');
             const micText = document.getElementById('mic-status-text');
 
             if (!isListening) {
-                recognition.start();
+                committedSpeechText = document.getElementById('candidate-answer').value.trim();
+                manualMicStop = false;
+                try {
+                    recognition.start();
+                } catch {}
                 isListening = true;
-                micText.textContent = isHindiSession ? "सुन रहा हूँ..." : "Listening...";
-                micBtn.className = "px-3.5 py-1.5 bg-cyan-500/20 border border-cyan-500/40 text-cyan-300 text-xs rounded-xl flex items-center space-x-1.5 animate-pulse shadow-md";
+                micText.textContent = isHindiSession ? "सुन रहा हूँ (रुकने पर भी सुरक्षित)..." : "Listening (Pause-Safe)...";
+                micBtn.className = "px-3.5 py-1.5 bg-cyan-500/20 border border-cyan-500/40 text-cyan-300 text-xs rounded-xl flex items-center space-x-1.5 animate-pulse shadow-md cursor-pointer";
             } else {
-                recognition.stop();
+                manualMicStop = true;
                 isListening = false;
+                try {
+                    recognition.stop();
+                } catch {}
+                committedSpeechText = document.getElementById('candidate-answer').value.trim();
                 micText.textContent = "Start Voice Mic";
-                micBtn.className = "px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-gray-300 text-xs rounded-xl shadow-md";
+                micBtn.className = "px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-gray-300 text-xs rounded-xl flex items-center space-x-1.5 transition-all shadow-md cursor-pointer";
             }
         };
 
@@ -407,17 +509,7 @@
         // --- START SESSION ---
         async function startSession() {
             syncEndButtonState();
-
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-                document.getElementById('candidate-video').srcObject = stream;
-                cameraActive = true;
-                document.getElementById('cam-presence-label').textContent = 'Camera: Active';
-            } catch (e) {
-                cameraActive = false;
-                console.error("Webcam error:", e);
-                document.getElementById('cam-presence-label').textContent = 'Camera: Blocked / Off';
-            }
+            await requestMandatoryCamera();
 
             startTimer();
             startVisionTelemetry();
@@ -428,7 +520,12 @@
                 const res = await fetch(`${BACKEND_URL}/api/interview/start`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ role: activeRole, category: activeCategory, language: activeLanguage })
+                    body: JSON.stringify({
+                        role: activeRole,
+                        category: activeCategory,
+                        language: activeLanguage,
+                        candidate_id: candidateId
+                    })
                 });
                 const result = await res.json();
                 if (result.success) {
@@ -445,6 +542,11 @@
 
         // --- SUBMIT ANSWER ---
         window.submitAnswer = async function() {
+            if (!cameraActive) {
+                await requestMandatoryCamera();
+                if (!cameraActive) return;
+            }
+
             if (isListening) toggleVoiceInput();
             const answerInput = document.getElementById('candidate-answer');
             const answerText = answerInput.value.trim();
@@ -455,9 +557,11 @@
 
             const currentQ = document.getElementById('ai-question-text').textContent;
             answerInput.value = "";
+            committedSpeechText = "";
+
             const btn = document.getElementById('submit-btn');
             btn.disabled = true;
-            btn.innerHTML = `<span>${isHindiSession ? "उत्तर की जांच हो रही है..." : "Evaluating response..."}</span>`;
+            btn.innerHTML = `<span>${isHindiSession ? "उत्तर का विश्लेषण हो रहा है..." : "Analyzing response..."}</span>`;
 
             try {
                 const res = await fetch(`${BACKEND_URL}/api/interview/evaluate`, {
@@ -469,7 +573,8 @@
                         answer_text: answerText,
                         role: activeRole,
                         category: activeCategory,
-                        language: activeLanguage
+                        language: activeLanguage,
+                        candidate_id: candidateId
                     })
                 });
                 const result = await res.json();
@@ -496,7 +601,7 @@
 
                     const fbBox = document.getElementById('interim-feedback-box');
                     fbBox.classList.remove('hidden');
-                    fbBox.textContent = `${isHindiSession ? "समीक्षा" : "Feedback"}: ${qFeedback}`;
+                    fbBox.textContent = `${isHindiSession ? "उत्तर समीक्षा" : "Answer Feedback"}: ${qFeedback}`;
 
                     if (result.is_completed || questionsAnsweredCount >= maxQuestions || !result.next_question) {
                         allQuestionsCompleted = true;

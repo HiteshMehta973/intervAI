@@ -14,7 +14,7 @@ import json
 
 load_dotenv()
 
-app = FastAPI(title="intervAI Enterprise Gemini Backend Engine", version="3.4.0")
+app = FastAPI(title="intervAI Enterprise Gemini Backend Engine", version="3.6.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -27,13 +27,14 @@ app.add_middleware(
 client = genai.Client()
 
 SESSION_DB = {}
-RECENT_QUESTIONS_BY_ROLE = {}
+RECENT_QUESTIONS_BY_SCOPE = {}
 
 
 class InterviewStartRequest(BaseModel):
     role: str = "Software Engineer"
     category: str = "Technical"
     language: Optional[str] = "English"
+    candidate_id: Optional[str] = "guest"
 
 
 class AnswerSubmissionRequest(BaseModel):
@@ -43,6 +44,7 @@ class AnswerSubmissionRequest(BaseModel):
     role: str
     category: str
     language: Optional[str] = "English"
+    candidate_id: Optional[str] = "guest"
 
 
 class SaveReportRequest(BaseModel):
@@ -75,12 +77,12 @@ def _is_duplicate_question(candidate_q: str, history: List[str]) -> bool:
         old_tokens = set(norm_old.split())
         if new_tokens and old_tokens:
             overlap = len(new_tokens & old_tokens) / max(len(new_tokens), len(old_tokens))
-            if overlap >= 0.78:
+            if overlap >= 0.72:
                 return True
     return False
 
 
-def _generate_with_retry(prompt: str, json_mode: bool = False, temperature: float = 0.85):
+def _generate_with_retry(prompt: str, json_mode: bool = False, temperature: float = 0.9):
     models_to_try = ["gemini-3.8-flash", "gemini-2.5-flash"]
     config = types.GenerateContentConfig(
         response_mime_type="application/json" if json_mode else "text/plain",
@@ -135,27 +137,89 @@ def _language_rule(language: str) -> str:
     return "CRITICAL LANGUAGE RULE: Write strictly in very simple, clear, everyday English with short sentences."
 
 
-def _remember_question(role: str, category: str, language: str, question: str):
-    key = f"{role.strip().lower()}::{category.strip().lower()}::{language.strip().lower()}"
-    history = RECENT_QUESTIONS_BY_ROLE.setdefault(key, [])
-    if question and not _is_duplicate_question(question, history):
-        history.append(question)
-        if len(history) > 60:
-            RECENT_QUESTIONS_BY_ROLE[key] = history[-60:]
+def _scope_keys(candidate_id: str, role: str, category: str, language: str) -> List[str]:
+    cid = (candidate_id or "guest").strip().lower()
+    r = role.strip().lower()
+    c = category.strip().lower()
+    l = language.strip().lower()
+    return [
+        f"user:{cid}::role:{r}::lang:{l}",
+        f"role:{r}::cat:{c}::lang:{l}",
+        f"role:{r}::lang:{l}"
+    ]
 
 
-def _get_recent_questions(role: str, category: str, language: str) -> List[str]:
-    key = f"{role.strip().lower()}::{category.strip().lower()}::{language.strip().lower()}"
-    return RECENT_QUESTIONS_BY_ROLE.get(key, [])
+def _remember_question(candidate_id: str, role: str, category: str, language: str, question: str):
+    if not question:
+        return
+    for key in _scope_keys(candidate_id, role, category, language):
+        history = RECENT_QUESTIONS_BY_SCOPE.setdefault(key, [])
+        if not _is_duplicate_question(question, history):
+            history.append(question)
+            if len(history) > 120:
+                RECENT_QUESTIONS_BY_SCOPE[key] = history[-120:]
 
 
-def _generate_start_response(role: str, category: str, language: str):
+def _get_recent_questions(candidate_id: str, role: str, category: str, language: str) -> List[str]:
+    merged: List[str] = []
+    for key in _scope_keys(candidate_id, role, category, language):
+        for q in RECENT_QUESTIONS_BY_SCOPE.get(key, []):
+            if q not in merged:
+                merged.append(q)
+    return merged
+
+
+def _build_dynamic_fallback_question(
+    role: str,
+    category: str,
+    difficulty: str,
+    topic_focus: str,
+    candidate_answer: str,
+    is_hindi: bool,
+    blocked: List[str]
+) -> str:
+    ans_snippet = " ".join((candidate_answer or "").split()[:6]).strip()
+    if is_hindi:
+        templates = [
+            f"{role} के {category} क्षेत्र में '{topic_focus}' को ध्यान में रखते हुए बताइए कि आप इसे व्यवहार में कैसे लागू करेंगे?",
+            f"मान लीजिए {role} की भूमिका में '{topic_focus}' से जुड़ी कोई स्थिति आती है, तो आपका पहला कदम क्या होगा?",
+            f"{difficulty} स्तर पर सोचें: {role} के लिए '{topic_focus}' समझना क्यों ज़रूरी है और इसका एक सरल उदाहरण क्या हो सकता है?"
+        ]
+        if ans_snippet and ans_snippet.lower() not in {"no", "nahi", "idk", "skip"}:
+            templates.append(
+                f"आपने '{ans_snippet}' का ज़िक्र किया—इसे {role} के {category} काम में '{topic_focus}' से जोड़कर कैसे समझाएंगे?"
+            )
+    else:
+        templates = [
+            f"In {role} ({category}), how would you apply '{topic_focus}' in a simple everyday situation?",
+            f"Thinking at a {difficulty} level for {role}, what first step would you take around '{topic_focus}'?",
+            f"Why does '{topic_focus}' matter in {category} for a {role}, and how would you explain it simply?"
+        ]
+        if ans_snippet and ans_snippet.lower() not in {"no", "nahi", "idk", "skip"}:
+            templates.append(
+                f"Building on '{ans_snippet}', how does that connect to '{topic_focus}' for a {role}?"
+            )
+
+    for q in templates:
+        if not _is_duplicate_question(q, blocked):
+            return q
+    suffix = os.urandom(2).hex()
+    return (
+        f"{role} ({category}) में '{topic_focus}' के बारे में अपना सरल विचार बताइए (#{suffix})।"
+        if is_hindi
+        else f"Share your simple approach to '{topic_focus}' in {role} ({category}) (#{suffix})."
+    )
+
+
+def _generate_start_response(role: str, category: str, language: str, candidate_id: str = "guest"):
     lang = (language or "English").strip()
     is_hindi = lang.lower() == "hindi"
+    cid = (candidate_id or "guest").strip()
     session_id = "sess_" + os.urandom(4).hex()
-    recent_qs = _get_recent_questions(role, category, lang)
+    recent_qs = _get_recent_questions(cid, role, category, lang)
 
     SESSION_DB[session_id] = {
+        "candidate_id": cid,
         "role": role,
         "category": category,
         "language": lang,
@@ -168,8 +232,9 @@ def _generate_start_response(role: str, category: str, language: str):
     Category: {category}
     {_language_rule(lang)}
 
-    Ask the candidate to introduce themselves ("Tell me about yourself" and their background/interest in {role}), phrased in a fresh, warm way that is NOT similar to these recent questions:
-    {json.dumps(recent_qs[-10:], ensure_ascii=False, indent=2)}
+    Dynamically craft a fresh, welcoming opening question asking the candidate to introduce themselves and share their background/interest in {role} ({category}).
+    Make it noticeably different from these previously asked questions for this candidate/role:
+    {json.dumps(recent_qs[-15:], ensure_ascii=False, indent=2)}
 
     Return ONLY the question text without quotes or markdown.
     """
@@ -181,27 +246,18 @@ def _generate_start_response(role: str, category: str, language: str):
         ai_question = ""
 
     if not ai_question or _is_duplicate_question(ai_question, recent_qs):
-        if is_hindi:
-            hindi_intros = [
-                f"नमस्ते! इंटरव्यू में आपका स्वागत है। कृपया अपने बारे में बताइए और {role} में आपकी रुचि कैसे शुरू हुई?",
-                f"नमस्ते! शुरुआत करने के लिए, अपना संक्षिप्त परिचय दीजिए और बताइए कि आपने {role} से जुड़ा क्या काम या पढ़ाई की है?",
-                f"स्वागत है! सबसे पहले आप अपने बारे में कुछ बताइए और यह भी कि आप {role} की भूमिका क्यों चुनना चाहते हैं?",
-                f"नमस्ते! आइए शुरू करते हैं—आप अपने बैकग्राउंड और {role} के अनुभव के बारे में थोड़ा बताइए।"
-            ]
-            choices = [q for q in hindi_intros if not _is_duplicate_question(q, recent_qs)]
-            ai_question = random.choice(choices or hindi_intros)
-        else:
-            en_intros = [
-                f"Hi! Welcome to your interview. Could you tell me a little about yourself and why you like {role}?",
-                f"Hello! To begin, please introduce yourself and share your background in {role}.",
-                f"Welcome! Can you briefly tell me about yourself and what got you interested in {role}?",
-                f"Hi there! Let's start with a quick introduction—who are you and what have you worked on for {role}?"
-            ]
-            choices = [q for q in en_intros if not _is_duplicate_question(q, recent_qs)]
-            ai_question = random.choice(choices or en_intros)
+        ai_question = _build_dynamic_fallback_question(
+            role=role,
+            category=category,
+            difficulty="Easy",
+            topic_focus="your introduction and interest in this role",
+            candidate_answer="",
+            is_hindi=is_hindi,
+            blocked=recent_qs
+        )
 
     SESSION_DB[session_id]["asked_questions"].append(ai_question)
-    _remember_question(role, category, lang, ai_question)
+    _remember_question(cid, role, category, lang, ai_question)
 
     return {
         "success": True,
@@ -222,16 +278,22 @@ def read_root():
 
 @app.post("/api/interview/start")
 def start_interview_post(data: InterviewStartRequest):
-    return _generate_start_response(data.role, data.category, data.language or "English")
+    return _generate_start_response(
+        data.role,
+        data.category,
+        data.language or "English",
+        data.candidate_id or "guest"
+    )
 
 
 @app.get("/api/interview/start")
 def start_interview_get(
     role: str = Query("Software Engineer"),
     category: str = Query("Technical"),
-    language: str = Query("English")
+    language: str = Query("English"),
+    candidate_id: str = Query("guest")
 ):
-    return _generate_start_response(role, category, language)
+    return _generate_start_response(role, category, language, candidate_id)
 
 
 @app.post("/api/interview/evaluate")
@@ -243,10 +305,11 @@ def evaluate_answer(data: AnswerSubmissionRequest):
     category = data.category
     lang = (data.language or "English").strip()
     is_hindi = lang.lower() == "hindi"
+    cid = (data.candidate_id or "guest").strip()
 
     session_data = SESSION_DB.get(session_id, {"asked_questions": []})
     previous_questions = session_data.get("asked_questions", [])
-    cross_session_questions = _get_recent_questions(role, category, lang)
+    cross_session_questions = _get_recent_questions(cid, role, category, lang)
     all_blocked_questions = list(dict.fromkeys(previous_questions + cross_session_questions))
 
     current_q = previous_questions[-1] if previous_questions else ("अपने बारे में बताइए" if is_hindi else "Tell me about yourself")
@@ -254,15 +317,15 @@ def evaluate_answer(data: AnswerSubmissionRequest):
     next_difficulty, level_guide = _get_difficulty_for_index(next_index)
 
     topic_pool = [
-        "basic concepts and definitions",
-        "daily tools and practical workflow",
-        "debugging and fixing errors",
-        "teamwork and communication",
-        "data handling, speed, and reliability",
-        "testing, edge cases, and best practices",
-        "real project experience and decisions"
+        "core concepts and fundamentals",
+        "practical tools and daily workflow",
+        "debugging and root-cause analysis",
+        "handling edge cases and errors",
+        "performance and scalability",
+        "team collaboration and trade-offs",
+        "project design and decision making"
     ]
-    topic_angle = topic_pool[next_index % len(topic_pool)]
+    topic_angle = topic_pool[(next_index + random.randint(0, 2)) % len(topic_pool)]
 
     prompt = f"""
     You are a human-like, attentive AI interviewer for the role: {role} (Category: {category}).
@@ -271,24 +334,24 @@ def evaluate_answer(data: AnswerSubmissionRequest):
     Current Question Asked: "{current_q}"
     Candidate's Answer: "{answer_text}"
 
-    STEP 1 - CONTEXT-AWARE AVATAR REACTION ("avatar_reply"):
-    - Read the candidate's answer carefully and respond directly to what they actually said!
-    - If the candidate said "no", "nahi", "pata nahi", "idk", "skip", or gave an irrelevant / off-topic / nonsensical reply: politely acknowledge that it is okay if they are unsure or that the answer was off-topic, briefly give a 1-line helpful hint about the question, and smoothly transition to the next question.
-    - If the candidate gave a short or partial answer: acknowledge what they got right, note what was missing, and transition naturally.
-    - If the candidate gave a strong, relevant answer: briefly appreciate their specific point and move forward.
-    - Do NOT include numeric marks/scores in "avatar_reply" or "feedback".
+    STEP 1 - ANALYZE THE CANDIDATE'S ANSWER & GENERATE AVATAR FEEDBACK ("avatar_reply" & "feedback"):
+- Carefully analyze what the candidate actually wrote or said in response to the question.
+- If the answer is "no", "nahi", "pata nahi", "idk", "skip", irrelevant/off-topic, or unclear: explicitly point out what was missing or off-topic in a polite, helpful way and give a short hint so the candidate learns.
+- If the answer has valid points or partial detail: specifically mention what was good in their answer and what they can add next time.
+- Do NOT put numeric scores inside "avatar_reply" or "feedback".
 
     STEP 2 - STRICT SCORING:
-    - Score 4 metrics (0-100): "completeness", "correctness", "relevance", "clarity".
-    - If the answer is "no", "nahi", "idk", "pata nahi", "skip", off-topic, or 1-2 words, keep scores between 5 and 25.
-    - Only score 70+ when the candidate genuinely answers the question with clear, relevant points.
-    - "overall_score" = integer average of the 4 metrics.
+- Score 4 metrics (0-100): "completeness", "correctness", "relevance", "clarity".
+- If the answer is "no", "nahi", "idk", "pata nahi", "skip", off-topic, or 1-2 words, keep scores between 5 and 25.
+- Only score 70+ when the candidate genuinely answers the question with clear, relevant points.
+- "overall_score" = integer average of the 4 metrics.
 
-    STEP 3 - UNIQUE NEXT QUESTION ("next_question"):
-    - {level_guide}
-    - Topic focus: {topic_angle}.
-    - You MUST NOT repeat or rephrase any of these previously asked questions:
-    {json.dumps(all_blocked_questions[-40:], ensure_ascii=False, indent=2)}
+    STEP 3 - DYNAMIC UNIQUE NEXT QUESTION ("next_question"):
+- {level_guide}
+- Topic focus: {topic_angle}.
+- Create a fresh, dynamic question tailored to {role}, {category}, and the candidate's response.
+- You MUST NOT repeat or rephrase any of these previously asked questions:
+    {json.dumps(all_blocked_questions[-60:], ensure_ascii=False, indent=2)}
 
     Return a valid JSON object with keys:
     "completeness", "correctness", "relevance", "clarity", "overall_score", "feedback", "avatar_reply", "next_question".
@@ -303,7 +366,7 @@ def evaluate_answer(data: AnswerSubmissionRequest):
     word_count = len(answer_text.split())
 
     try:
-        content = _generate_with_retry(prompt, json_mode=True, temperature=0.85)
+        content = _generate_with_retry(prompt, json_mode=True, temperature=0.9)
         parsed = json.loads(content)
 
         completeness = max(0, min(100, int(parsed.get("completeness", 25))))
@@ -326,30 +389,31 @@ def evaluate_answer(data: AnswerSubmissionRequest):
 
     except Exception as e:
         print(f"Error in evaluate_answer: {e}")
+        short_quote = answer_text[:60]
         if clean_ans in non_answers or word_count <= 2:
             completeness, correctness, relevance, clarity, overall_score = 10, 10, 10, 20, 13
             if is_hindi:
-                feedback = "कोई बात नहीं, अगर पूरा उत्तर याद नहीं है तो भी जो बुनियादी बात पता हो वह बताएं।"
-                avatar_reply = "कोई बात नहीं, अगर इस सवाल का उत्तर अभी याद नहीं है तो हम अगले सवाल पर चलते हैं।"
+                feedback = f"आपने '{short_quote}' कहा, जो इस सवाल का पूरा उत्तर नहीं है। जो भी बुनियादी जानकारी हो, उसे सरल शब्दों में बताने की कोशिश करें।"
+                avatar_reply = f"मैंने देखा कि आपने '{short_quote}' उत्तर दिया। कोई बात नहीं, थोड़ा प्रयास ज़रूर करें—अब अगला सवाल पूछते हैं।"
             else:
-                feedback = "No worries—try sharing even a basic idea if you are unsure."
-                avatar_reply = "That's okay if you're not sure about that one. Let's move on to the next question."
+                feedback = f"You replied '{short_quote}', which doesn't answer the question yet. Try sharing even a basic point or example."
+                avatar_reply = f"I noticed your reply was '{short_quote}'. That's okay—let's try another question and share what you know."
         elif word_count < 10:
             completeness, correctness, relevance, clarity, overall_score = 38, 42, 45, 50, 44
             if is_hindi:
-                feedback = "आपका उत्तर थोड़ा छोटा है। अगली बार 2-3 साफ वाक्यों में उदाहरण के साथ समझाएं।"
-                avatar_reply = "आपने सही शुरुआत की है, हालांकि इसे थोड़ा और विस्तार से समझाया जा सकता था। अब अगला सवाल देखते हैं।"
+                feedback = f"आपका उत्तर ('{short_quote}') थोड़ा संक्षिप्त है। इसे 2-3 साफ वाक्यों और एक उदाहरण के साथ पूरा करें।"
+                avatar_reply = f"आपने '{short_quote}' के ज़रिए शुरुआत की, पर इसे थोड़ा और समझाया जा सकता था। अब अगला सवाल देखते हैं।"
             else:
-                feedback = "Your answer is a bit short. Try explaining in 2-3 clear sentences with an example."
-                avatar_reply = "You made a brief start, though a little more detail would help. Let's try the next question."
+                feedback = f"Your response ('{short_quote}') is a bit brief. Expand it with a clear explanation or example."
+                avatar_reply = f"You gave a short start with '{short_quote}', though more detail would help. Let's move to the next question."
         else:
             completeness, correctness, relevance, clarity, overall_score = 72, 74, 76, 78, 75
             if is_hindi:
-                feedback = "अच्छा और स्पष्ट उत्तर! एक छोटा उदाहरण जोड़ने से यह और बेहतर हो जाएगा।"
-                avatar_reply = "बहुत अच्छा, आपने अपनी बात साफ तरीके से रखी। चलिए अगले सवाल पर चलते हैं।"
+                feedback = f"आपने '{short_quote}' से जुड़ी अच्छी बात रखी। एक ठोस उदाहरण जोड़कर इसे और मजबूत बनाया जा सकता है।"
+                avatar_reply = f"अच्छा प्रयास—आपने अपने उत्तर में मुख्य बात रखी। अब अगले सवाल पर आगे बढ़ते हैं।"
             else:
-                feedback = "Clear explanation! Adding one practical example will make it even better."
-                avatar_reply = "Great, you explained that clearly. Let's move to the next question."
+                feedback = f"Good points in your response ('{short_quote}'). Adding a concrete example can make it even stronger."
+                avatar_reply = f"Good response—you addressed the question with clear points. Let's move on to the next question."
         next_q_text = ""
 
     if not feedback:
@@ -358,59 +422,18 @@ def evaluate_answer(data: AnswerSubmissionRequest):
         avatar_reply = feedback
 
     if not next_q_text or _is_duplicate_question(next_q_text, all_blocked_questions):
-        if is_hindi:
-            fallback_pool = {
-                "Easy": [
-                    f"{role} के काम के लिए सबसे ज़रूरी बुनियादी स्किल्स कौन-कौन सी हैं?",
-                    f"सरल शब्दों में बताइए कि एक {role} रोज़ाना क्या काम करता है?",
-                    f"{role} से जुड़ा कौन-सा बेसिक टूल या तकनीक आपको सबसे अच्छी तरह आती है?",
-                    f"किसी नए व्यक्ति को {role} सीखने के लिए सबसे पहले क्या समझना चाहिए?",
-                    f"आप अपने काम या पढ़ाई में {role} की कौन-सी बुनियादी बात सबसे ज़्यादा इस्तेमाल करते हैं?"
-                ],
-                "Medium": [
-                    f"आपने {role} से जुड़ा कोई छोटा प्रोजेक्ट या टास्क किया हो, तो उसके बारे में सरल भाषा में बताइए।",
-                    f"जब आपके {role} के काम में कोई गलती या एरर आता है, तो आप उसे कैसे ढूंढते और ठीक करते हैं?",
-                    f"आप यह कैसे सुनिश्चित करते हैं कि {role} के रूप में आपका काम साफ और भरोसेमंद हो?",
-                    f"किसी ऐसे मौके के बारे में बताइए जब आपको {role} के लिए कोई नई चीज़ जल्दी सीखनी पड़ी हो।",
-                    f"अगर एक साथ दो ज़रूरी काम आ जाएं, तो {role} के तौर पर आप पहले किसे और क्यों चुनेंगे?"
-                ],
-                "Hard": [
-                    f"मान लीजिए आपके {role} सिस्टम का इस्तेमाल अचानक बहुत ज़्यादा लोग करने लगें और वह धीमा हो जाए, तो आप उसे तेज़ कैसे करेंगे?",
-                    f"{role} के काम में आने वाली किसी कठिन समस्या या खास स्थिति (edge case) का उदाहरण दीजिए और आप उसे कैसे हल करेंगे?",
-                    f"अगर आपको तेज़ काम करने और सिस्टम को सरल रखने में से किसी एक को चुनना हो, तो आप क्या फैसला लेंगे और क्यों?",
-                    f"आप यह कैसे जांचेंगे कि आपका {role} समाधान गलत या अजीब इनपुट आने पर भी फेल न हो?",
-                    f"किसी बड़े प्रोजेक्ट में पुराने तरीके को सुधारकर बेहतर बनाने के लिए आप क्या कदम उठाएंगे?"
-                ]
-            }
-        else:
-            fallback_pool = {
-                "Easy": [
-                    f"What are the most important basic skills needed for a {role}?",
-                    f"Can you explain in simple words what a {role} does every day?",
-                    f"Which basic tool or technology do you feel most comfortable using for {role}?",
-                    f"What is one simple concept every beginner in {role} should learn first?",
-                    f"Which fundamental part of {role} do you enjoy working with the most?"
-                ],
-                "Medium": [
-                    f"Can you describe a small project or task you built or worked on for {role}?",
-                    f"When something breaks or gives an error in your {role} work, how do you find and fix it?",
-                    f"How do you make sure your work as a {role} is clean, reliable, and easy for others to understand?",
-                    f"Tell me about a time you had to learn a new tool quickly for a {role} task.",
-                    f"When you have two urgent tasks in {role}, how do you decide which one to finish first?"
-                ],
-                "Hard": [
-                    f"Imagine many users start using your {role} system at the same time and it becomes slow. How would you make it faster?",
-                    f"What is a difficult problem or edge case you might face in {role}, and how would you solve it step by step?",
-                    f"If you had to choose between making a {role} solution faster or making it simpler to maintain, how would you decide?",
-                    f"How would you test and protect a {role} system so it does not fail when unexpected inputs happen?",
-                    f"How would you improve an existing slow workflow in {role} without breaking what already works?"
-                ]
-            }
-        candidates = [q for q in fallback_pool[next_difficulty] if not _is_duplicate_question(q, all_blocked_questions)]
-        next_q_text = random.choice(candidates or fallback_pool[next_difficulty])
+        next_q_text = _build_dynamic_fallback_question(
+            role=role,
+            category=category,
+            difficulty=next_difficulty,
+            topic_focus=topic_angle,
+            candidate_answer=answer_text,
+            is_hindi=is_hindi,
+            blocked=all_blocked_questions
+        )
 
     SESSION_DB.setdefault(session_id, {}).setdefault("asked_questions", []).append(next_q_text)
-    _remember_question(role, category, lang, next_q_text)
+    _remember_question(cid, role, category, lang, next_q_text)
 
     is_completed = question_index >= 14
 
@@ -447,10 +470,10 @@ def sandbox_evaluate(data: SandboxEvaluationRequest):
     Candidate's Answer: "{data.answer}"
 
     Evaluate this candidate answer clearly in simple, easy-to-understand English. Provide:
-    1. A precise overall score from 40 to 98 based on the depth of the answer ("score").
-    2. Exactly 2 specific strengths observed in this answer ("strengths" as a list of strings).
-    3. Exactly 2 distinct constructive areas for improvement ("improvements" as a list of strings).
-    4. An insightful, simple model response or suggestion ("model_suggestion").
+1. A precise overall score from 40 to 98 based on the depth of the answer ("score").
+2. Exactly 2 specific strengths observed in this answer ("strengths" as a list of strings).
+3. Exactly 2 distinct constructive areas for improvement ("improvements" as a list of strings).
+4. An insightful, simple model response or suggestion ("model_suggestion").
 
     Return a valid JSON object with keys: "score", "strengths", "improvements", "model_suggestion".
     """
@@ -491,4 +514,4 @@ app.mount("/", StaticFiles(directory="static", html=True), name="static")
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
+    uvicorn.run("backend.main:app", host="127.0.0.1", port=8000, reload=True)
