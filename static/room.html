@@ -67,7 +67,8 @@
                     <div id="avatar-loading" class="absolute inset-flex items-center justify-center text-xs text-cyan-400">Loading 3D Sandbox...</div>
                 </div>
 
-                <div class="mt-4 bg-slate-950/60 p-4 rounded-2xl border border-slate-800/80">
+                <div class="mt-4 bg-slate-950/60 p-4 rounded-2xl border border-slate-800/80 space-y-2">
+                    <p id="avatar-reaction-text" class="hidden text-xs text-indigo-300 italic border-b border-slate-800/80 pb-2"></p>
                     <p id="ai-question-text" class="text-sm md:text-base font-medium text-gray-200 leading-relaxed">Initializing secure connection with FastAPI neural backend...</p>
                 </div>
                 <div id="interim-feedback-box" class="hidden px-4 py-2.5 bg-cyan-950/60 border border-cyan-800/60 text-cyan-300 text-xs rounded-xl mt-2"></div>
@@ -154,10 +155,14 @@
 
         const activeRole = localStorage.getItem('intervai_active_role') || "Software Engineer";
         const activeCategory = localStorage.getItem('intervai_active_category') || "Technical";
-        const activeLanguage = localStorage.getItem('intervai_active_language') || "English";
+        const activeLanguage = (localStorage.getItem('intervai_active_language') || "English").trim();
+        const isHindiSession = activeLanguage.toLowerCase() === "hindi";
         const candidateName = (currentUserObj && (currentUserObj.fullName || currentUserObj.username)) || "Candidate";
 
         document.getElementById('interview-subtitle').textContent = `Target Role: ${activeRole} (${activeCategory} | ${activeLanguage})`;
+        if (isHindiSession) {
+            document.getElementById('candidate-answer').placeholder = "अपना उत्तर हिंदी में टाइप करें या 'Start Voice Mic' दबाकर बोलें...";
+        }
 
         function syncEndButtonState() {
             const endBtn = document.getElementById('end-btn');
@@ -328,7 +333,7 @@
                 recognition = new SpeechRecognition();
                 recognition.continuous = true;
                 recognition.interimResults = true;
-                recognition.lang = activeLanguage === "Hindi" ? "hi-IN" : "en-US";
+                recognition.lang = isHindiSession ? "hi-IN" : "en-US";
 
                 recognition.onresult = (event) => {
                     let transcript = '';
@@ -348,7 +353,7 @@
             if (!isListening) {
                 recognition.start();
                 isListening = true;
-                micText.textContent = "Listening...";
+                micText.textContent = isHindiSession ? "सुन रहा हूँ..." : "Listening...";
                 micBtn.className = "px-3.5 py-1.5 bg-cyan-500/20 border border-cyan-500/40 text-cyan-300 text-xs rounded-xl flex items-center space-x-1.5 animate-pulse shadow-md";
             } else {
                 recognition.stop();
@@ -358,14 +363,40 @@
             }
         };
 
-        // --- TEXT-TO-SPEECH ---
-        function speakQuestion(text) {
-            document.getElementById('ai-question-text').textContent = text;
+        // --- TEXT-TO-SPEECH (STRICT HINDI / ENGLISH VOICE) ---
+        function pickVoiceForLanguage(hindi) {
+            if (!('speechSynthesis' in window)) return null;
+            const voices = window.speechSynthesis.getVoices() || [];
+            if (hindi) {
+                return voices.find(v => (v.lang || "").toLowerCase().includes("hi")) || null;
+            }
+            return voices.find(v => (v.lang || "").toLowerCase().startsWith("en")) || null;
+        }
+
+        if ('speechSynthesis' in window) {
+            window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
+        }
+
+        function speakAvatarTurn(questionText, reactionText = "") {
+            const reactionEl = document.getElementById('avatar-reaction-text');
+            if (reactionText) {
+                reactionEl.textContent = reactionText;
+                reactionEl.classList.remove('hidden');
+            } else {
+                reactionEl.textContent = "";
+                reactionEl.classList.add('hidden');
+            }
+
+            document.getElementById('ai-question-text').textContent = questionText;
+
             if ('speechSynthesis' in window) {
                 window.speechSynthesis.cancel();
-                const utterance = new SpeechSynthesisUtterance(text);
-                utterance.lang = activeLanguage === "Hindi" ? "hi-IN" : "en-US";
-                
+                const fullSpokenText = reactionText ? `${reactionText} ${questionText}` : questionText;
+                const utterance = new SpeechSynthesisUtterance(fullSpokenText);
+                utterance.lang = isHindiSession ? "hi-IN" : "en-US";
+                const matchedVoice = pickVoiceForLanguage(isHindiSession);
+                if (matchedVoice) utterance.voice = matchedVoice;
+
                 utterance.onstart = () => { if (avatarMesh) avatarMesh.scale.set(1.15, 1.15, 1.15); };
                 utterance.onend = () => { if (avatarMesh) avatarMesh.scale.set(1, 1, 1); };
 
@@ -405,7 +436,7 @@
                     maxQuestions = Number((result.data && result.data.max_questions) || 15);
                     document.getElementById('question-counter').textContent = `Question 1 of ${maxQuestions}`;
                     syncEndButtonState();
-                    speakQuestion(result.data.question);
+                    speakAvatarTurn(result.data.question);
                 }
             } catch (e) {
                 document.getElementById('ai-question-text').textContent = "Error: Unable to connect to FastAPI backend server.";
@@ -417,25 +448,36 @@
             if (isListening) toggleVoiceInput();
             const answerInput = document.getElementById('candidate-answer');
             const answerText = answerInput.value.trim();
-            if (!answerText) { alert("Please provide an answer."); return; }
+            if (!answerText) {
+                alert(isHindiSession ? "कृपया पहले अपना उत्तर लिखें या बोलें।" : "Please provide an answer.");
+                return;
+            }
 
             const currentQ = document.getElementById('ai-question-text').textContent;
             answerInput.value = "";
             const btn = document.getElementById('submit-btn');
             btn.disabled = true;
-            btn.innerHTML = `<span>Evaluating response...</span>`;
+            btn.innerHTML = `<span>${isHindiSession ? "उत्तर की जांच हो रही है..." : "Evaluating response..."}</span>`;
 
             try {
                 const res = await fetch(`${BACKEND_URL}/api/interview/evaluate`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ session_id: sessionId, question_index: currentQuestionIndex, answer_text: answerText, role: activeRole, category: activeCategory, language: activeLanguage })
+                    body: JSON.stringify({
+                        session_id: sessionId,
+                        question_index: currentQuestionIndex,
+                        answer_text: answerText,
+                        role: activeRole,
+                        category: activeCategory,
+                        language: activeLanguage
+                    })
                 });
                 const result = await res.json();
 
                 if (result.success) {
                     const qScore = Number(result.score_awarded ?? (result.metrics && result.metrics.overall_score) ?? 15);
-                    const qFeedback = result.interim_feedback || "Response recorded.";
+                    const qFeedback = result.interim_feedback || "";
+                    const avatarReply = result.avatar_reply || qFeedback;
 
                     sessionTranscript.push({
                         questionNumber: currentQuestionIndex + 1,
@@ -443,9 +485,10 @@
                         answer: answerText,
                         score: qScore,
                         feedback: qFeedback,
+                        avatarReply: avatarReply,
                         metrics: result.metrics || null
                     });
-                    updateTranscriptUI(currentQ, answerText);
+                    updateTranscriptUI(currentQ, answerText, avatarReply);
 
                     totalScoreAccumulator += qScore;
                     questionsAnsweredCount++;
@@ -453,7 +496,7 @@
 
                     const fbBox = document.getElementById('interim-feedback-box');
                     fbBox.classList.remove('hidden');
-                    fbBox.textContent = `Feedback: ${qFeedback}`;
+                    fbBox.textContent = `${isHindiSession ? "समीक्षा" : "Feedback"}: ${qFeedback}`;
 
                     if (result.is_completed || questionsAnsweredCount >= maxQuestions || !result.next_question) {
                         allQuestionsCompleted = true;
@@ -462,7 +505,7 @@
                     } else {
                         currentQuestionIndex++;
                         document.getElementById('question-counter').textContent = `Question ${currentQuestionIndex + 1} of ${maxQuestions}`;
-                        speakQuestion(result.next_question.question);
+                        speakAvatarTurn(result.next_question.question, avatarReply);
                     }
                 }
             } catch (e) {
@@ -540,10 +583,16 @@
             concludeSession();
         };
 
-        function updateTranscriptUI(q, a) {
+        function updateTranscriptUI(q, a, reply = "") {
             const log = document.getElementById('transcript-log');
             if (log.querySelector('.italic')) log.innerHTML = '';
-            log.innerHTML += `<div class="border-b border-slate-800 pb-2 mb-2"><p class="text-cyan-400 font-medium">Q: ${q}</p><p class="text-gray-300 mt-0.5">A: ${a}</p></div>`;
+            log.innerHTML += `
+                <div class="border-b border-slate-800 pb-2 mb-2">
+                    <p class="text-cyan-400 font-medium">Q: ${q}</p>
+                    <p class="text-gray-300 mt-0.5">A: ${a}</p>
+                    ${reply ? `<p class="text-indigo-300 mt-0.5 text-[11px]">AI: ${reply}</p>` : ""}
+                </div>
+            `;
         }
 
         window.addEventListener('DOMContentLoaded', startSession);

@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from fastapi.staticfiles import StaticFiles
 import os
+import re
 import time
 import random
 from typing import List, Optional
@@ -13,7 +14,7 @@ import json
 
 load_dotenv()
 
-app = FastAPI(title="intervAI Enterprise Gemini Backend Engine", version="3.3.0")
+app = FastAPI(title="intervAI Enterprise Gemini Backend Engine", version="3.4.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -26,7 +27,6 @@ app.add_middleware(
 client = genai.Client()
 
 SESSION_DB = {}
-# Remembers recent questions per (role, category) across repeated interviews so users get fresh questions
 RECENT_QUESTIONS_BY_ROLE = {}
 
 
@@ -59,6 +59,27 @@ class SandboxEvaluationRequest(BaseModel):
     answer: str
 
 
+def _normalize_text(text: str) -> str:
+    return re.sub(r"\s+", " ", re.sub(r"[^\w\s\u0900-\u097F]", "", (text or "").lower())).strip()
+
+
+def _is_duplicate_question(candidate_q: str, history: List[str]) -> bool:
+    norm_new = _normalize_text(candidate_q)
+    if not norm_new:
+        return True
+    new_tokens = set(norm_new.split())
+    for old_q in history:
+        norm_old = _normalize_text(old_q)
+        if norm_new == norm_old:
+            return True
+        old_tokens = set(norm_old.split())
+        if new_tokens and old_tokens:
+            overlap = len(new_tokens & old_tokens) / max(len(new_tokens), len(old_tokens))
+            if overlap >= 0.78:
+                return True
+    return False
+
+
 def _generate_with_retry(prompt: str, json_mode: bool = False, temperature: float = 0.85):
     models_to_try = ["gemini-3.8-flash", "gemini-2.5-flash"]
     config = types.GenerateContentConfig(
@@ -88,87 +109,99 @@ def _generate_with_retry(prompt: str, json_mode: bool = False, temperature: floa
 
 
 def _get_difficulty_for_index(next_q_index: int) -> tuple[str, str]:
-    """Returns (difficulty_label, prompt_guidance) based on progressive question number."""
     if next_q_index < 5:
         return (
             "Easy",
-            "Difficulty: EASY (Beginner level). Ask about basic definitions, simple core concepts, or everyday fundamentals. Use very simple, easy-to-understand language and short sentences."
+            "Difficulty: EASY (Beginner level). Ask about basic definitions, simple core concepts, or everyday fundamentals."
         )
     elif next_q_index < 10:
         return (
             "Medium",
-            "Difficulty: MEDIUM (Practical level). Ask a practical how-to, real-world usage, or debugging/workflow question. Keep the wording very simple, clear, and easy to understand without heavy jargon."
+            "Difficulty: MEDIUM (Practical level). Ask a practical how-to, real-world usage, or debugging/workflow question."
         )
     else:
         return (
             "Hard",
-            "Difficulty: HARD (Advanced problem-solving level). Ask about system scaling, performance optimization, trade-offs, or tricky edge cases—but explain the scenario in very simple, clear, everyday language so the candidate easily understands what is being asked."
+            "Difficulty: HARD (Advanced problem-solving level). Ask about system scaling, performance optimization, trade-offs, or tricky edge cases."
         )
 
 
-def _remember_question(role: str, category: str, question: str):
-    key = f"{role.strip().lower()}::{category.strip().lower()}"
+def _language_rule(language: str) -> str:
+    if (language or "").strip().lower() == "hindi":
+        return (
+            "CRITICAL LANGUAGE RULE: Write your response strictly in SIMPLE HINDI (Devanagari script, e.g., 'नमस्ते! अपने बारे में थोड़ा बताइए...'). "
+            "Do NOT write full English sentences. Use simple, everyday Hindi words that are easy to understand and speak."
+        )
+    return "CRITICAL LANGUAGE RULE: Write strictly in very simple, clear, everyday English with short sentences."
+
+
+def _remember_question(role: str, category: str, language: str, question: str):
+    key = f"{role.strip().lower()}::{category.strip().lower()}::{language.strip().lower()}"
     history = RECENT_QUESTIONS_BY_ROLE.setdefault(key, [])
-    if question and question not in history:
+    if question and not _is_duplicate_question(question, history):
         history.append(question)
-        if len(history) > 45:
-            RECENT_QUESTIONS_BY_ROLE[key] = history[-45:]
+        if len(history) > 60:
+            RECENT_QUESTIONS_BY_ROLE[key] = history[-60:]
 
 
-def _get_recent_questions(role: str, category: str) -> List[str]:
-    key = f"{role.strip().lower()}::{category.strip().lower()}"
+def _get_recent_questions(role: str, category: str, language: str) -> List[str]:
+    key = f"{role.strip().lower()}::{category.strip().lower()}::{language.strip().lower()}"
     return RECENT_QUESTIONS_BY_ROLE.get(key, [])
 
 
 def _generate_start_response(role: str, category: str, language: str):
+    lang = (language or "English").strip()
+    is_hindi = lang.lower() == "hindi"
     session_id = "sess_" + os.urandom(4).hex()
-    recent_qs = _get_recent_questions(role, category)
-    style_seed = random.choice([
-        "warm and conversational",
-        "short and encouraging",
-        "friendly and direct",
-        "welcoming and casual",
-        "calm and supportive"
-    ])
+    recent_qs = _get_recent_questions(role, category, lang)
 
     SESSION_DB[session_id] = {
         "role": role,
         "category": category,
-        "language": language,
+        "language": lang,
         "asked_questions": []
     }
 
     prompt = f"""
     You are a friendly AI interviewer.
-    The candidate is applying for the role of: {role}.
-    Interview category: {category}.
-    Language: {language}.
-    Tone style: {style_seed}.
+    Candidate role: {role}
+    Category: {category}
+    {_language_rule(lang)}
 
-    Ask the candidate to introduce themselves ("Tell me about yourself" and their background/interest in {role}), phrased in a fresh, unique way that is different from these recent openings:
-    {json.dumps(recent_qs[-8:], indent=2)}
+    Ask the candidate to introduce themselves ("Tell me about yourself" and their background/interest in {role}), phrased in a fresh, warm way that is NOT similar to these recent questions:
+    {json.dumps(recent_qs[-10:], ensure_ascii=False, indent=2)}
 
-    Use very simple and easy {language}.
-    Keep the question short, clear, and easy to understand.
-    Do not use difficult vocabulary or complex sentences.
-
-    Return ONLY the question text in {language} without quotes or markdown.
+    Return ONLY the question text without quotes or markdown.
     """
 
     try:
         ai_question = _generate_with_retry(prompt, json_mode=False, temperature=0.95)
     except Exception as e:
         print(f"Error in start_interview: {e}")
-        fallback_intros = [
-            f"Hi! Welcome to your interview. Could you tell me a little about yourself and why you like {role}?",
-            f"Hello! To begin, please introduce yourself and share your background in {role}.",
-            f"Welcome! Can you briefly tell me about yourself and what got you interested in {role}?",
-            f"Hi there! Let's start with a quick introduction—who are you and what have you worked on for {role}?"
-        ]
-        ai_question = random.choice(fallback_intros)
+        ai_question = ""
+
+    if not ai_question or _is_duplicate_question(ai_question, recent_qs):
+        if is_hindi:
+            hindi_intros = [
+                f"नमस्ते! इंटरव्यू में आपका स्वागत है। कृपया अपने बारे में बताइए और {role} में आपकी रुचि कैसे शुरू हुई?",
+                f"नमस्ते! शुरुआत करने के लिए, अपना संक्षिप्त परिचय दीजिए और बताइए कि आपने {role} से जुड़ा क्या काम या पढ़ाई की है?",
+                f"स्वागत है! सबसे पहले आप अपने बारे में कुछ बताइए और यह भी कि आप {role} की भूमिका क्यों चुनना चाहते हैं?",
+                f"नमस्ते! आइए शुरू करते हैं—आप अपने बैकग्राउंड और {role} के अनुभव के बारे में थोड़ा बताइए।"
+            ]
+            choices = [q for q in hindi_intros if not _is_duplicate_question(q, recent_qs)]
+            ai_question = random.choice(choices or hindi_intros)
+        else:
+            en_intros = [
+                f"Hi! Welcome to your interview. Could you tell me a little about yourself and why you like {role}?",
+                f"Hello! To begin, please introduce yourself and share your background in {role}.",
+                f"Welcome! Can you briefly tell me about yourself and what got you interested in {role}?",
+                f"Hi there! Let's start with a quick introduction—who are you and what have you worked on for {role}?"
+            ]
+            choices = [q for q in en_intros if not _is_duplicate_question(q, recent_qs)]
+            ai_question = random.choice(choices or en_intros)
 
     SESSION_DB[session_id]["asked_questions"].append(ai_question)
-    _remember_question(role, category, ai_question)
+    _remember_question(role, category, lang, ai_question)
 
     return {
         "success": True,
@@ -208,51 +241,65 @@ def evaluate_answer(data: AnswerSubmissionRequest):
     question_index = data.question_index
     role = data.role
     category = data.category
-    language = data.language or "English"
+    lang = (data.language or "English").strip()
+    is_hindi = lang.lower() == "hindi"
 
     session_data = SESSION_DB.get(session_id, {"asked_questions": []})
     previous_questions = session_data.get("asked_questions", [])
-    cross_session_questions = _get_recent_questions(role, category)
+    cross_session_questions = _get_recent_questions(role, category, lang)
     all_blocked_questions = list(dict.fromkeys(previous_questions + cross_session_questions))
 
+    current_q = previous_questions[-1] if previous_questions else ("अपने बारे में बताइए" if is_hindi else "Tell me about yourself")
     next_index = question_index + 1
     next_difficulty, level_guide = _get_difficulty_for_index(next_index)
-    topic_angle = random.choice([
-        "core concepts",
-        "practical tools and workflow",
-        "problem-solving and debugging",
-        "real-world project decisions",
-        "data, performance, or reliability",
-        "best practices and teamwork"
-    ])
+
+    topic_pool = [
+        "basic concepts and definitions",
+        "daily tools and practical workflow",
+        "debugging and fixing errors",
+        "teamwork and communication",
+        "data handling, speed, and reliability",
+        "testing, edge cases, and best practices",
+        "real project experience and decisions"
+    ]
+    topic_angle = topic_pool[next_index % len(topic_pool)]
 
     prompt = f"""
-    You are a fair, supportive, yet accurate AI interviewer for the role: {role} (Category: {category}).
-    Language preference: {language}
-    Current Question Asked: "{previous_questions[-1] if previous_questions else 'Tell me about yourself'}"
+    You are a human-like, attentive AI interviewer for the role: {role} (Category: {category}).
+    {_language_rule(lang)}
+
+    Current Question Asked: "{current_q}"
     Candidate's Answer: "{answer_text}"
 
-    STRICT EVALUATION RULES:
-    - If the candidate replies with "no", "idk", "i don't know", "skip", off-topic text, or a 1-2 word non-answer, score completeness, correctness, relevance, and clarity very low (between 5 and 25 out of 100).
-    - Only give 70+ when the answer genuinely explains relevant concepts clearly.
-    - Calculate "overall_score" as the integer average of completeness, correctness, relevance, and clarity (0-100).
+    STEP 1 - CONTEXT-AWARE AVATAR REACTION ("avatar_reply"):
+    - Read the candidate's answer carefully and respond directly to what they actually said!
+    - If the candidate said "no", "nahi", "pata nahi", "idk", "skip", or gave an irrelevant / off-topic / nonsensical reply: politely acknowledge that it is okay if they are unsure or that the answer was off-topic, briefly give a 1-line helpful hint about the question, and smoothly transition to the next question.
+    - If the candidate gave a short or partial answer: acknowledge what they got right, note what was missing, and transition naturally.
+    - If the candidate gave a strong, relevant answer: briefly appreciate their specific point and move forward.
+    - Do NOT include numeric marks/scores in "avatar_reply" or "feedback".
 
-    CRITICAL INSTRUCTIONS FOR NEXT QUESTION:
+    STEP 2 - STRICT SCORING:
+    - Score 4 metrics (0-100): "completeness", "correctness", "relevance", "clarity".
+    - If the answer is "no", "nahi", "idk", "pata nahi", "skip", off-topic, or 1-2 words, keep scores between 5 and 25.
+    - Only score 70+ when the candidate genuinely answers the question with clear, relevant points.
+    - "overall_score" = integer average of the 4 metrics.
+
+    STEP 3 - UNIQUE NEXT QUESTION ("next_question"):
     - {level_guide}
-    - Focus angle for variety: {topic_angle}.
-    - Always use very simple, clear, easy-to-understand {language} with short sentences so any candidate can easily understand the question.
-    - You MUST NOT repeat or rephrase any of these previously asked questions (from this session or past sessions):
-    {json.dumps(all_blocked_questions[-30:], indent=2)}
+    - Topic focus: {topic_angle}.
+    - You MUST NOT repeat or rephrase any of these previously asked questions:
+    {json.dumps(all_blocked_questions[-40:], ensure_ascii=False, indent=2)}
 
-    Provide short, helpful, constructive feedback ("feedback") in simple {language} WITHOUT mentioning numeric marks/scores inside the feedback text.
-    Generate a completely fresh, unique NEXT interview question ("next_question") in {language}.
-    
-    Return a valid JSON object with keys: 
-    "completeness", "correctness", "relevance", "clarity", "overall_score", "feedback", "next_question".
+    Return a valid JSON object with keys:
+    "completeness", "correctness", "relevance", "clarity", "overall_score", "feedback", "avatar_reply", "next_question".
     """
 
-    non_answers = {"no", "na", "n/a", "idk", "i don't know", "dont know", "don't know", "skip", "pass", "nothing", "none"}
-    clean_ans = answer_text.lower().strip(".!? ")
+    non_answers = {
+        "no", "na", "n/a", "idk", "i don't know", "dont know", "don't know",
+        "skip", "pass", "nothing", "none", "nahi", "nahin", "nhi",
+        "pata nahi", "pata nhi", "mujhe nahi pata", "maloom nahi", "मालूम नहीं", "पता नहीं", "नहीं"
+    }
+    clean_ans = answer_text.lower().strip(".!?। ")
     word_count = len(answer_text.split())
 
     try:
@@ -273,49 +320,97 @@ def evaluate_answer(data: AnswerSubmissionRequest):
             overall_score = int(parsed.get("overall_score", round((completeness + correctness + relevance + clarity) / 4)))
             overall_score = max(0, min(100, overall_score))
 
-        feedback = parsed.get("feedback", "Good effort! Try adding a simple example to make your answer stronger.")
-        next_q_text = parsed.get("next_question", "").strip()
+        feedback = (parsed.get("feedback") or "").strip()
+        avatar_reply = (parsed.get("avatar_reply") or "").strip()
+        next_q_text = (parsed.get("next_question") or "").strip()
 
     except Exception as e:
         print(f"Error in evaluate_answer: {e}")
         if clean_ans in non_answers or word_count <= 2:
             completeness, correctness, relevance, clarity, overall_score = 10, 10, 10, 20, 13
-            feedback = "A short 'no' or skipped reply does not answer the question. Try sharing whatever basic idea you know."
+            if is_hindi:
+                feedback = "कोई बात नहीं, अगर पूरा उत्तर याद नहीं है तो भी जो बुनियादी बात पता हो वह बताएं।"
+                avatar_reply = "कोई बात नहीं, अगर इस सवाल का उत्तर अभी याद नहीं है तो हम अगले सवाल पर चलते हैं।"
+            else:
+                feedback = "No worries—try sharing even a basic idea if you are unsure."
+                avatar_reply = "That's okay if you're not sure about that one. Let's move on to the next question."
         elif word_count < 10:
             completeness, correctness, relevance, clarity, overall_score = 38, 42, 45, 50, 44
-            feedback = "Your answer is a bit brief. Try explaining it in 2-3 clear sentences."
+            if is_hindi:
+                feedback = "आपका उत्तर थोड़ा छोटा है। अगली बार 2-3 साफ वाक्यों में उदाहरण के साथ समझाएं।"
+                avatar_reply = "आपने सही शुरुआत की है, हालांकि इसे थोड़ा और विस्तार से समझाया जा सकता था। अब अगला सवाल देखते हैं।"
+            else:
+                feedback = "Your answer is a bit short. Try explaining in 2-3 clear sentences with an example."
+                avatar_reply = "You made a brief start, though a little more detail would help. Let's try the next question."
         else:
             completeness, correctness, relevance, clarity, overall_score = 72, 74, 76, 78, 75
-            feedback = "Clear explanation! Adding one practical example will make it even better."
+            if is_hindi:
+                feedback = "अच्छा और स्पष्ट उत्तर! एक छोटा उदाहरण जोड़ने से यह और बेहतर हो जाएगा।"
+                avatar_reply = "बहुत अच्छा, आपने अपनी बात साफ तरीके से रखी। चलिए अगले सवाल पर चलते हैं।"
+            else:
+                feedback = "Clear explanation! Adding one practical example will make it even better."
+                avatar_reply = "Great, you explained that clearly. Let's move to the next question."
         next_q_text = ""
 
-    # Guarantee unique next question matching progressive difficulty if empty or duplicate
-    if not next_q_text or next_q_text in all_blocked_questions:
-        fallback_pool = {
-            "Easy": [
-                f"What are the most important basic skills needed for a {role}?",
-                f"Can you explain in simple words what a {role} does every day?",
-                f"Which basic tool or technology do you feel most comfortable using for {role}?",
-                f"What is one simple concept every beginner in {role} should learn first?"
-            ],
-            "Medium": [
-                f"Can you describe a small project or task you built or worked on for {role}?",
-                f"When something breaks or gives an error in your {role} work, how do you find and fix it?",
-                f"How do you make sure your work as a {role} is clean, reliable, and easy for others to understand?",
-                f"Tell me about a time you had to learn a new tool quickly for a {role} task."
-            ],
-            "Hard": [
-                f"Imagine many users start using your {role} system at the same time and it becomes slow. How would you make it faster?",
-                f"What is a difficult problem or edge case you might face in {role}, and how would you solve it step by step?",
-                f"If you had to choose between making a {role} solution faster or making it simpler to maintain, how would you decide?",
-                f"How would you test and protect a {role} system so it does not fail when unexpected inputs happen?"
-            ]
-        }
-        candidates = [q for q in fallback_pool[next_difficulty] if q not in all_blocked_questions]
+    if not feedback:
+        feedback = "अच्छा प्रयास! थोड़ा और विस्तार से उत्तर दें।" if is_hindi else "Good effort! Try adding a bit more detail."
+    if not avatar_reply:
+        avatar_reply = feedback
+
+    if not next_q_text or _is_duplicate_question(next_q_text, all_blocked_questions):
+        if is_hindi:
+            fallback_pool = {
+                "Easy": [
+                    f"{role} के काम के लिए सबसे ज़रूरी बुनियादी स्किल्स कौन-कौन सी हैं?",
+                    f"सरल शब्दों में बताइए कि एक {role} रोज़ाना क्या काम करता है?",
+                    f"{role} से जुड़ा कौन-सा बेसिक टूल या तकनीक आपको सबसे अच्छी तरह आती है?",
+                    f"किसी नए व्यक्ति को {role} सीखने के लिए सबसे पहले क्या समझना चाहिए?",
+                    f"आप अपने काम या पढ़ाई में {role} की कौन-सी बुनियादी बात सबसे ज़्यादा इस्तेमाल करते हैं?"
+                ],
+                "Medium": [
+                    f"आपने {role} से जुड़ा कोई छोटा प्रोजेक्ट या टास्क किया हो, तो उसके बारे में सरल भाषा में बताइए।",
+                    f"जब आपके {role} के काम में कोई गलती या एरर आता है, तो आप उसे कैसे ढूंढते और ठीक करते हैं?",
+                    f"आप यह कैसे सुनिश्चित करते हैं कि {role} के रूप में आपका काम साफ और भरोसेमंद हो?",
+                    f"किसी ऐसे मौके के बारे में बताइए जब आपको {role} के लिए कोई नई चीज़ जल्दी सीखनी पड़ी हो।",
+                    f"अगर एक साथ दो ज़रूरी काम आ जाएं, तो {role} के तौर पर आप पहले किसे और क्यों चुनेंगे?"
+                ],
+                "Hard": [
+                    f"मान लीजिए आपके {role} सिस्टम का इस्तेमाल अचानक बहुत ज़्यादा लोग करने लगें और वह धीमा हो जाए, तो आप उसे तेज़ कैसे करेंगे?",
+                    f"{role} के काम में आने वाली किसी कठिन समस्या या खास स्थिति (edge case) का उदाहरण दीजिए और आप उसे कैसे हल करेंगे?",
+                    f"अगर आपको तेज़ काम करने और सिस्टम को सरल रखने में से किसी एक को चुनना हो, तो आप क्या फैसला लेंगे और क्यों?",
+                    f"आप यह कैसे जांचेंगे कि आपका {role} समाधान गलत या अजीब इनपुट आने पर भी फेल न हो?",
+                    f"किसी बड़े प्रोजेक्ट में पुराने तरीके को सुधारकर बेहतर बनाने के लिए आप क्या कदम उठाएंगे?"
+                ]
+            }
+        else:
+            fallback_pool = {
+                "Easy": [
+                    f"What are the most important basic skills needed for a {role}?",
+                    f"Can you explain in simple words what a {role} does every day?",
+                    f"Which basic tool or technology do you feel most comfortable using for {role}?",
+                    f"What is one simple concept every beginner in {role} should learn first?",
+                    f"Which fundamental part of {role} do you enjoy working with the most?"
+                ],
+                "Medium": [
+                    f"Can you describe a small project or task you built or worked on for {role}?",
+                    f"When something breaks or gives an error in your {role} work, how do you find and fix it?",
+                    f"How do you make sure your work as a {role} is clean, reliable, and easy for others to understand?",
+                    f"Tell me about a time you had to learn a new tool quickly for a {role} task.",
+                    f"When you have two urgent tasks in {role}, how do you decide which one to finish first?"
+                ],
+                "Hard": [
+                    f"Imagine many users start using your {role} system at the same time and it becomes slow. How would you make it faster?",
+                    f"What is a difficult problem or edge case you might face in {role}, and how would you solve it step by step?",
+                    f"If you had to choose between making a {role} solution faster or making it simpler to maintain, how would you decide?",
+                    f"How would you test and protect a {role} system so it does not fail when unexpected inputs happen?",
+                    f"How would you improve an existing slow workflow in {role} without breaking what already works?"
+                ]
+            }
+        candidates = [q for q in fallback_pool[next_difficulty] if not _is_duplicate_question(q, all_blocked_questions)]
         next_q_text = random.choice(candidates or fallback_pool[next_difficulty])
 
     SESSION_DB.setdefault(session_id, {}).setdefault("asked_questions", []).append(next_q_text)
-    _remember_question(role, category, next_q_text)
+    _remember_question(role, category, lang, next_q_text)
 
     is_completed = question_index >= 14
 
@@ -338,6 +433,7 @@ def evaluate_answer(data: AnswerSubmissionRequest):
         },
         "score_awarded": overall_score,
         "interim_feedback": feedback,
+        "avatar_reply": avatar_reply,
         "is_completed": is_completed,
         "next_question": next_question_obj
     }
@@ -390,7 +486,6 @@ def save_interview_report(report: SaveReportRequest):
     return {"success": True, "message": "Enterprise report successfully persisted."}
 
 
-# Mount static files after API routes so /api/* endpoints are never shadowed
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
 
 
