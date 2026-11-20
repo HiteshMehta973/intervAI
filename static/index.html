@@ -384,7 +384,7 @@
                 <!-- Step 1: Expanded Question Bank -->
                 <div class="mb-6">
                     <label class="block text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">1. Select Interview Question</label>
-                    <select id="sample-question" onchange="loadSampleAnswer()" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-cyan-500">
+                    <select id="sample-question" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-cyan-500">
                         <option value="Tell me about a time you resolved a critical production incident under high pressure.">"Tell me about a time you resolved a critical production incident under high pressure." (Behavioral)</option>
                         <option value="How would you design a globally distributed real-time chat system like WhatsApp?">"How would you design a globally distributed real-time chat system like WhatsApp?" (System Design)</option>
                         <option value="Explain the concept of closures in JavaScript and provide a practical use-case.">"Explain the concept of closures in JavaScript and provide a practical use-case." (Technical - JS)</option>
@@ -398,10 +398,15 @@
                 <div class="mb-6">
                     <div class="flex justify-between items-center mb-2">
                         <label class="text-xs font-semibold uppercase tracking-wider text-gray-400">2. Your Answer (Type or Speak via Audio Mic)</label>
-                        <button id="sandbox-mic-btn" type="button" onclick="toggleSandboxVoice()" class="px-3 py-1 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-gray-300 text-xs rounded-lg flex items-center space-x-1.5 transition-all">
-                            <svg class="w-3.5 h-3.5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"/></svg>
-                            <span id="sandbox-mic-text">+Voice Microphone+</span>
-                        </button>
+                        <div class="flex items-center space-x-2">
+                            <button id="fill-sample-btn" type="button" onclick="loadSampleAnswer()" class="px-2.5 py-1 bg-slate-800/70 hover:bg-slate-700 border border-slate-700/80 text-gray-400 hover:text-cyan-300 text-xs rounded-lg transition-all">
+                                Sample Fill
+                            </button>
+                            <button id="sandbox-mic-btn" type="button" onclick="toggleSandboxVoice()" class="px-3 py-1 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-gray-300 text-xs rounded-lg flex items-center space-x-1.5 transition-all">
+                                <svg class="w-3.5 h-3.5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"/></svg>
+                                <span id="sandbox-mic-text">+Voice Microphone+</span>
+                            </button>
+                        </div>
                     </div>
                     <textarea id="candidate-response" rows="4" class="w-full bg-slate-950 border border-slate-800 rounded-xl p-4 text-sm text-gray-200 focus:outline-none focus:border-cyan-500 shadow-inner" placeholder="Type your response or click '+Voice Microphone+' to speak your answer..."></textarea>
                 </div>
@@ -603,7 +608,6 @@
 
         function scrollToSandbox() {
             document.getElementById('sandbox').scrollIntoView({ behavior: 'smooth' });
-            loadSampleAnswer();
         }
 
         function scrollToDemo() {
@@ -640,10 +644,7 @@
         function loadSampleAnswer() {
             const select = document.getElementById('sample-question');
             const textarea = document.getElementById('candidate-response');
-            const selectedQ = select.value;
-            if (sampleAnswers[selectedQ]) {
-                textarea.value = sampleAnswers[selectedQ];
-            }
+            textarea.value = sampleAnswers[select.value] || "";
         }
 
         let sandboxRecognition = null;
@@ -710,30 +711,35 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ question: question, answer: answer })
                 });
+
+                if (!res.ok) {
+                    const errText = await res.text();
+                    throw new Error(`Server returned ${res.status}: ${errText}`);
+                }
+
                 const result = await res.json();
 
-                if (result.success) {
+                if (result.success && result.data) {
                     const data = result.data;
                     document.getElementById('score-badge').textContent = `${data.score}/100`;
-                    
-                    document.getElementById('strengths-list').innerHTML = data.strengths.map(s => `<li class="flex items-start space-x-2"><span class="text-emerald-400">•</span><span>${s}</span></li>`).join('');
-                    document.getElementById('improvements-list').innerHTML = data.improvements.map(i => `<li class="flex items-start space-x-2"><span class="text-amber-400">•</span><span>${i}</span></li>`).join('');
-                    document.getElementById('model-suggestion').textContent = data.model_suggestion;
+                    document.getElementById('strengths-list').innerHTML = (data.strengths || []).map(s => `<li class="flex items-start space-x-2"><span class="text-emerald-400">•</span><span>${s}</span></li>`).join('');
+                    document.getElementById('improvements-list').innerHTML = (data.improvements || []).map(i => `<li class="flex items-start space-x-2"><span class="text-amber-400">•</span><span>${i}</span></li>`).join('');
+                    document.getElementById('model-suggestion').textContent = data.model_suggestion || "";
 
-                    document.getElementById('evaluation-result').classList.remove('hidden');
+                    const resultBox = document.getElementById('evaluation-result');
+                    resultBox.classList.remove('hidden');
+                    resultBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                } else {
+                    throw new Error(result.detail || "Invalid evaluation payload.");
                 }
             } catch (e) {
                 console.error("Sandbox error:", e);
-                alert("Unable to connect to FastAPI backend server.");
+                alert("Unable to fetch AI feedback: " + e.message);
             } finally {
                 btn.disabled = false;
                 btn.innerHTML = `<i class="fa-solid fa-wand-magic-sparkles"></i><span>Get Instant AI Feedback</span>`;
             }
         }
-
-        window.addEventListener('DOMContentLoaded', () => {
-            loadSampleAnswer();
-        });
     </script>
 </body>
 </html>
