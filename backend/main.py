@@ -14,7 +14,7 @@ import json
 
 load_dotenv()
 
-app = FastAPI(title="intervAI Enterprise Gemini Backend Engine", version="3.7.0")
+app = FastAPI(title="intervAI Enterprise Gemini Backend Engine", version="3.8.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -85,7 +85,6 @@ def _is_duplicate_question(candidate_q: str, history: List[str]) -> bool:
 
 
 def _generate_with_retry(prompt: str, json_mode: bool = False, temperature: float = 0.9):
-    # Use fast valid Gemini models directly so there is zero dead-model delay
     models_to_try = ["gemini-2.5-flash", "gemini-2.5-flash-lite"]
     config = types.GenerateContentConfig(
         response_mime_type="application/json" if json_mode else "text/plain",
@@ -189,28 +188,32 @@ def _build_dynamic_fallback_question(
     is_hindi: bool,
     blocked: List[str]
 ) -> str:
-    ans_snippet = " ".join((candidate_answer or "").split()[:6]).strip()
+    ans_snippet = " ".join((candidate_answer or "").split()[:5]).strip()
+    clean_ans_low = ans_snippet.lower()
+    has_meaningful_ans = (
+        len(ans_snippet) > 0
+        and clean_ans_low not in {"no", "nahi", "idk", "skip", "नहीं", "पता"}
+    )
+
     if is_hindi:
         templates = [
-            f"{role} के {category} क्षेत्र में '{topic_focus}' को ध्यान में रखते हुए बताइए कि आप इसे व्यवहार में कैसे लागू करेंगे?",
-            f"मान लीजिए {role} की भूमिका में '{topic_focus}' से जुड़ी कोई स्थिति आती है, तो आपका पहला कदम क्या होगा?",
-            f"{difficulty} स्तर पर सोचें: {role} के लिए '{topic_focus}' समझना क्यों ज़रूरी है और इसका एक सरल उदाहरण क्या हो सकता है?",
-            f"आप {role} की तैयारी करते समय '{topic_focus}' से जुड़ी कौन-सी बात सबसे पहले सीखना या सुधारना चाहेंगे?"
+            f"नमस्ते! {role} ({category}) में {topic_focus} को लेकर आप अभी किस चीज़ पर काम कर रहे हैं?",
+            f"{role} के क्षेत्र में आगे बढ़ने के लिए आप {topic_focus} से जुड़ी कौन-सी बात सबसे पहले सीखना या सुधारना चाहेंगे?",
+            f"सरल शब्दों में बताइए: {role} के लिए {topic_focus} क्यों ज़रूरी है और आप इसका अभ्यास कैसे करते हैं?"
         ]
-        if ans_snippet and ans_snippet.lower() not in {"no", "nahi", "idk", "skip"}:
+        if has_meaningful_ans:
             templates.append(
-                f"आपने '{ans_snippet}' का ज़िक्र किया—इसे {role} के {category} काम में '{topic_focus}' से जोड़कर कैसे समझाएंगे?"
+                f"आपने '{ans_snippet}' के बारे में बताया—इसे {role} के {category} काम में {topic_focus} से जोड़कर कैसे समझाएंगे?"
             )
     else:
         templates = [
-            f"In {role} ({category}), how would you apply '{topic_focus}' in a simple everyday situation?",
-            f"Thinking at a {difficulty} level for {role}, what first step would you take around '{topic_focus}'?",
-            f"Why does '{topic_focus}' matter in {category} for a {role}, and how would you explain it simply?",
-            f"When working as a {role}, what is one practical habit you follow for '{topic_focus}'?"
+            f"Hi! For {role} ({category}), what are you currently focusing on around {topic_focus}?",
+            f"In {role}, what part of {topic_focus} would you like to learn or improve first?",
+            f"In simple words, why is {topic_focus} important for a {role}, and how do you practice it?"
         ]
-        if ans_snippet and ans_snippet.lower() not in {"no", "nahi", "idk", "skip"}:
+        if has_meaningful_ans:
             templates.append(
-                f"Building on '{ans_snippet}', how does that connect to '{topic_focus}' for a {role}?"
+                f"You mentioned '{ans_snippet}'—how does that connect to {topic_focus} for a {role}?"
             )
 
     random.shuffle(templates)
@@ -219,9 +222,9 @@ def _build_dynamic_fallback_question(
             return q
     suffix = random.randint(10, 99)
     return (
-        f"{role} ({category}) में '{topic_focus}' के बारे में अपना सरल विचार बताइए (भाग {suffix})।"
+        f"{role} में {topic_focus} को लेकर आप अगला क्या कदम उठाएंगे? (भाग {suffix})"
         if is_hindi
-        else f"Share your simple approach to '{topic_focus}' in {role} ({category}) (round {suffix})."
+        else f"What is your next step for {topic_focus} in {role}? (round {suffix})"
     )
 
 
@@ -246,18 +249,19 @@ def _generate_start_response(
         "asked_questions": []
     }
 
-    opening_angle = random.choice([
-        "warm greeting + ask what motivated them to choose this role and what skills they enjoy most",
-        "friendly welcome + ask about a recent project, tool, or learning experience related to this role",
-        "casual welcome + ask them to introduce their background and strongest area in this field",
-        "supportive greeting + ask what kind of problems they like solving in this role",
-        "conversational opening + ask about their journey into this domain and current focus"
+    opening_options = random.choice([
+        ("अपना परिचय और इस क्षेत्र में रुचि", "your background and interest in this role"),
+        ("कोई छोटा प्रोजेक्ट या सीखी हुई स्किल", "a recent project or skill you built"),
+        ("इस भूमिका में आपकी सबसे बड़ी ताकत", "your strongest skill for this role"),
+        ("अभी आप किस विषय पर ध्यान दे रहे हैं", "what you are currently learning for this role")
     ])
+    hindi_topic, eng_topic = opening_options
+    chosen_topic = hindi_topic if is_hindi else eng_topic
 
     prompt = f"""
     You are a friendly AI interviewer for Role: {role} ({category}).
     {_language_rule(lang)}
-    Opening angle: {opening_angle}.
+    Opening focus: {eng_topic}.
 
     Create ONE short, natural, unique opening interview question.
     Do NOT repeat or resemble any of these recent questions:
@@ -269,7 +273,7 @@ def _generate_start_response(
     try:
         ai_question = _generate_with_retry(prompt, json_mode=False, temperature=1.0)
     except Exception as e:
-        print(f"Error in start_interview: {e}")
+        print(f"Error in start_interview ({type(e).__name__}): {e}")
         ai_question = ""
 
     if not ai_question or _is_duplicate_question(ai_question, recent_qs):
@@ -277,7 +281,7 @@ def _generate_start_response(
             role=role,
             category=category,
             difficulty="Easy",
-            topic_focus=opening_angle.split("+")[-1].strip(),
+            topic_focus=chosen_topic,
             candidate_answer="",
             is_hindi=is_hindi,
             blocked=recent_qs
@@ -301,6 +305,15 @@ def _generate_start_response(
 @app.get("/api/health")
 def read_root():
     return {"status": "online", "message": "intervAI Secure Gemini Adaptive Backend is running."}
+
+
+@app.get("/api/gemini-test")
+def gemini_test():
+    try:
+        out = _generate_with_retry("Reply in one short word: OK", json_mode=False, temperature=0.2)
+        return {"gemini_working": True, "reply": out}
+    except Exception as e:
+        return {"gemini_working": False, "error_type": type(e).__name__, "error": str(e)}
 
 
 @app.post("/api/interview/start")
@@ -357,7 +370,6 @@ def evaluate_answer(data: AnswerSubmissionRequest):
     ]
     topic_angle = topic_pool[(next_index + random.randint(0, 3)) % len(topic_pool)]
 
-    # Compact prompt for fast 1-2s Gemini response
     prompt = f"""
     AI interviewer for {role} ({category}). {_language_rule(lang)}
     Question: "{current_q}"
@@ -404,7 +416,7 @@ def evaluate_answer(data: AnswerSubmissionRequest):
         next_q_text = (parsed.get("next_question") or "").strip()
 
     except Exception as e:
-        print(f"Error in evaluate_answer: {e}")
+        print(f"Error in evaluate_answer ({type(e).__name__}): {e}")
         short_quote = answer_text[:60]
         if clean_ans in non_answers or word_count <= 2:
             completeness, correctness, relevance, clarity, overall_score = 10, 10, 10, 20, 13
