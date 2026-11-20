@@ -21,12 +21,12 @@
 </head>
 <body class="h-full flex flex-col justify-between p-6 selection:bg-cyan-500 selection:text-white">
 
-    <!-- Anti-Cheat Security Warning Overlay -->
+    <!-- Anti-Cheat Tab Switch Warning Overlay -->
     <div id="cheat-warning" class="fixed inset-0 bg-red-950/80 backdrop-blur-md z-50 hidden flex flex-col items-center justify-center p-6 text-center">
         <div class="bg-slate-900 border border-red-500 p-8 rounded-3xl max-w-md shadow-2xl space-y-4">
             <div class="w-12 h-12 bg-red-500/20 text-red-400 rounded-full flex items-center justify-center mx-auto text-xl font-bold">⚠️</div>
-            <h2 class="text-xl font-bold text-red-400">Security Warning: Screen Switching Detected!</h2>
-            <p id="cheat-warning-detail" class="text-xs text-gray-300">Leaving the interview room or switching tabs is monitored. Please stay on this screen.</p>
+            <h2 class="text-xl font-bold text-red-400">Security Warning: Tab Switching Detected!</h2>
+            <p id="cheat-warning-detail" class="text-xs text-gray-300">Switching to another browser tab is not allowed during the interview. Please stay on this tab.</p>
             <button onclick="dismissWarning()" class="px-6 py-2.5 bg-red-600 hover:bg-red-500 text-white text-xs font-semibold rounded-xl transition-all shadow-lg">I Understand, Return to Room</button>
         </div>
     </div>
@@ -45,7 +45,7 @@
                 <span class="w-2 h-2 bg-emerald-400 rounded-full"></span>
                 <span id="timer" class="text-cyan-400 font-mono text-sm tracking-wider">00:00</span>
             </div>
-            <button onclick="endInterviewEarly()" class="px-4 py-2 bg-red-500/10 border border-red-500/30 hover:bg-red-600 text-red-400 hover:text-white text-xs font-semibold rounded-xl transition-all shadow-lg">End</button>
+            <button id="end-btn" onclick="endInterviewAfterCompletion()" disabled title="Complete all questions to finish the interview" class="px-4 py-2 bg-slate-800/70 border border-slate-700/80 text-gray-500 text-xs font-semibold rounded-xl transition-all cursor-not-allowed opacity-60">End (0/15)</button>
         </div>
     </header>
 
@@ -128,16 +128,17 @@
         const BACKEND_URL = "";
         let sessionId = "";
         let currentQuestionIndex = 0;
+        let maxQuestions = 15;
+        let allQuestionsCompleted = false;
         let sessionTranscript = [];
         let totalScoreAccumulator = 0;
         let questionsAnsweredCount = 0;
         let timerInterval = null;
         let secondsElapsed = 0;
 
-        // Camera & Anti-Cheat Telemetry State
+        // Camera & Tab-Switch Telemetry State
         let cameraActive = false;
         let tabSwitchCount = 0;
-        let blurCount = 0;
         let visionInterval = null;
         let prevFrameData = null;
         let presenceSamples = 0;
@@ -157,6 +158,23 @@
 
         document.getElementById('interview-subtitle').textContent = `Target Role: ${activeRole} (${activeCategory} | ${activeLanguage})`;
 
+        function syncEndButtonState() {
+            const endBtn = document.getElementById('end-btn');
+            if (!endBtn) return;
+
+            if (allQuestionsCompleted || questionsAnsweredCount >= maxQuestions) {
+                endBtn.disabled = false;
+                endBtn.textContent = "Finish & View Report";
+                endBtn.title = "All questions completed";
+                endBtn.className = "px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-xl transition-all shadow-lg cursor-pointer";
+            } else {
+                endBtn.disabled = true;
+                endBtn.textContent = `End (${questionsAnsweredCount}/${maxQuestions})`;
+                endBtn.title = `Complete all ${maxQuestions} questions to end the interview`;
+                endBtn.className = "px-4 py-2 bg-slate-800/70 border border-slate-700/80 text-gray-500 text-xs font-semibold rounded-xl transition-all cursor-not-allowed opacity-60";
+            }
+        }
+
         // --- TIMER ---
         function startTimer() {
             if (timerInterval) clearInterval(timerInterval);
@@ -168,30 +186,21 @@
             }, 1000);
         }
 
-        // --- ANTI-CHEAT SECURITY (TAB CHANGE + SCREEN FOCUS LOSS) ---
-        let lastViolationAt = 0;
-        function recordViolation(type) {
-            const now = Date.now();
-            if (now - lastViolationAt < 1000) return;
-            lastViolationAt = now;
-
-            if (type === 'tab') tabSwitchCount++;
-            else blurCount++;
-
-            const totalSwitches = tabSwitchCount + blurCount;
-            document.getElementById('cam-switches-label').textContent = `Tab Switches: ${totalSwitches}`;
-            document.getElementById('security-badge-text').textContent = totalSwitches > 0 ? `FLAGGED (${totalSwitches})` : 'SECURE';
-            document.getElementById('cheat-warning-detail').textContent =
-                `Detected ${type === 'tab' ? 'tab/screen switch' : 'window focus loss'} (${totalSwitches} total). Stay on the intervAI room screen.`;
-            document.getElementById('cheat-warning').classList.remove('hidden');
-        }
-
+        // --- ANTI-CHEAT SECURITY (ONLY WHEN SWITCHING TO ANOTHER TAB) ---
+        let lastTabViolationAt = 0;
         document.addEventListener('visibilitychange', () => {
-            if (document.hidden) recordViolation('tab');
-        });
+            if (document.hidden) {
+                const now = Date.now();
+                if (now - lastTabViolationAt < 1000) return;
+                lastTabViolationAt = now;
 
-        window.addEventListener('blur', () => {
-            recordViolation('blur');
+                tabSwitchCount++;
+                document.getElementById('cam-switches-label').textContent = `Tab Switches: ${tabSwitchCount}`;
+                document.getElementById('security-badge-text').textContent = `FLAGGED (${tabSwitchCount})`;
+                document.getElementById('cheat-warning-detail').textContent =
+                    `Switching to another tab was detected (${tabSwitchCount} time(s)). Please stay on this interview tab.`;
+                document.getElementById('cheat-warning').classList.remove('hidden');
+            }
         });
 
         window.dismissWarning = function() {
@@ -251,13 +260,11 @@
             const presenceRatio = presenceSamples > 0 ? activeFrames / presenceSamples : 0;
             const avgBrightness = presenceSamples > 0 ? brightnessSum / presenceSamples : 0;
             const avgMotion = presenceSamples > 0 ? motionSum / presenceSamples : 0;
-            const totalSwitches = tabSwitchCount + blurCount;
 
-            // Body language score reflects camera presence, steady composure (not erratic motion), and low tab switches
             const presencePts = Math.round(presenceRatio * 45);
             const lightingPts = avgBrightness >= 45 ? 20 : avgBrightness >= 22 ? 12 : 4;
             const stabilityPts = avgMotion <= 14 ? 25 : 14;
-            const switchPenalty = Math.min(25, totalSwitches * 8);
+            const switchPenalty = Math.min(25, tabSwitchCount * 8);
             const bodyLanguageScore = Math.max(25, Math.min(98, presencePts + lightingPts + stabilityPts + 10 - switchPenalty));
 
             const expressionLabel = avgMotion > 9
@@ -268,7 +275,7 @@
 
             return {
                 cameraActive,
-                tabSwitchCount: totalSwitches,
+                tabSwitchCount,
                 bodyLanguageScore,
                 avgBrightness: Math.round(avgBrightness),
                 avgMotion: Number(avgMotion.toFixed(1)),
@@ -364,6 +371,8 @@
 
         // --- START SESSION ---
         async function startSession() {
+            syncEndButtonState();
+
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
                 document.getElementById('candidate-video').srcObject = stream;
@@ -389,6 +398,9 @@
                 const result = await res.json();
                 if (result.success) {
                     sessionId = result.session_id;
+                    maxQuestions = Number((result.data && result.data.max_questions) || 15);
+                    document.getElementById('question-counter').textContent = `Question 1 of ${maxQuestions}`;
+                    syncEndButtonState();
                     speakQuestion(result.data.question);
                 }
             } catch (e) {
@@ -433,16 +445,19 @@
 
                     totalScoreAccumulator += qScore;
                     questionsAnsweredCount++;
+                    syncEndButtonState();
 
                     const fbBox = document.getElementById('interim-feedback-box');
                     fbBox.classList.remove('hidden');
                     fbBox.textContent = `Feedback (${qScore}/100): ${qFeedback}`;
 
-                    if (result.is_completed || questionsAnsweredCount >= 15) {
+                    if (result.is_completed || questionsAnsweredCount >= maxQuestions || !result.next_question) {
+                        allQuestionsCompleted = true;
+                        syncEndButtonState();
                         concludeSession();
                     } else {
                         currentQuestionIndex++;
-                        document.getElementById('question-counter').textContent = `Question ${currentQuestionIndex + 1} of 15`;
+                        document.getElementById('question-counter').textContent = `Question ${currentQuestionIndex + 1} of ${maxQuestions}`;
                         speakQuestion(result.next_question.question);
                     }
                 }
@@ -455,8 +470,14 @@
         }
 
         async function concludeSession() {
+            if (!allQuestionsCompleted && questionsAnsweredCount < maxQuestions) {
+                alert(`Please complete all ${maxQuestions} questions (${questionsAnsweredCount}/${maxQuestions} answered) before ending the interview.`);
+                return;
+            }
+
             if (timerInterval) clearInterval(timerInterval);
             if (visionInterval) clearInterval(visionInterval);
+            if ('speechSynthesis' in window) window.speechSynthesis.cancel();
 
             const avgAnswerScore = questionsAnsweredCount > 0
                 ? Math.round(totalScoreAccumulator / questionsAnsweredCount)
@@ -507,12 +528,13 @@
             window.location.href = "report.html";
         }
 
-        window.endInterviewEarly = function() {
-            if (confirm("Are you sure you want to end the interview early?")) {
-                if ('speechSynthesis' in window) window.speechSynthesis.cancel();
-                concludeSession();
+        window.endInterviewAfterCompletion = function() {
+            if (!allQuestionsCompleted && questionsAnsweredCount < maxQuestions) {
+                alert(`You can only end the interview after completing all ${maxQuestions} questions (${questionsAnsweredCount}/${maxQuestions} completed).`);
+                return;
             }
-        }
+            concludeSession();
+        };
 
         function updateTranscriptUI(q, a) {
             const log = document.getElementById('transcript-log');
