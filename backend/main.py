@@ -14,7 +14,7 @@ import json
 
 load_dotenv()
 
-app = FastAPI(title="intervAI Enterprise Gemini Backend Engine", version="3.8.0")
+app = FastAPI(title="intervAI Enterprise Gemini Backend Engine", version="3.9.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -79,12 +79,12 @@ def _is_duplicate_question(candidate_q: str, history: List[str]) -> bool:
         old_tokens = set(norm_old.split())
         if new_tokens and old_tokens:
             overlap = len(new_tokens & old_tokens) / max(len(new_tokens), len(old_tokens))
-            if overlap >= 0.70:
+            if overlap >= 0.72:
                 return True
     return False
 
 
-def _generate_with_retry(prompt: str, json_mode: bool = False, temperature: float = 0.9):
+def _generate_with_retry(prompt: str, json_mode: bool = False, temperature: float = 0.85):
     models_to_try = ["gemini-3.5-flash-lite", "gemini-2.5-flash"]
     config = types.GenerateContentConfig(
         response_mime_type="application/json" if json_mode else "text/plain",
@@ -129,13 +129,23 @@ def _get_difficulty_for_index(next_q_index: int) -> tuple[str, str]:
         )
 
 
-def _language_rule(language: str) -> str:
+def _language_rule(language: str, allow_greeting: bool = False) -> str:
     if (language or "").strip().lower() == "hindi":
-        return (
-            "LANGUAGE: Strictly SIMPLE HINDI (Devanagari script only, e.g., 'नमस्ते! ...'). "
-            "No English sentences. Keep sentences short and easy to speak."
+        greeting_note = (
+            "You may start with a brief polite greeting once."
+            if allow_greeting
+            else "Do NOT start with 'नमस्ते', 'स्वागत है', 'हैलो', or any greeting—ask directly."
         )
-    return "LANGUAGE: Very simple, clear, everyday English with short sentences."
+        return (
+            f"LANGUAGE: Strictly SIMPLE HINDI (Devanagari script only). No English sentences. "
+            f"Keep sentences short and easy to speak. {greeting_note}"
+        )
+    greeting_note = (
+        "You may include a brief natural greeting once."
+        if allow_greeting
+        else "Do NOT start with 'Hi', 'Hello', 'Welcome', or any greeting—ask directly."
+    )
+    return f"LANGUAGE: Very simple, clear, everyday English with short sentences. {greeting_note}"
 
 
 def _scope_keys(candidate_id: str, role: str, category: str, language: str) -> List[str]:
@@ -197,9 +207,9 @@ def _build_dynamic_fallback_question(
 
     if is_hindi:
         templates = [
-            f"नमस्ते! {role} ({category}) में {topic_focus} को लेकर आप अभी किस चीज़ पर काम कर रहे हैं?",
-            f"{role} के क्षेत्र में आगे बढ़ने के लिए आप {topic_focus} से जुड़ी कौन-सी बात सबसे पहले सीखना या सुधारना चाहेंगे?",
-            f"सरल शब्दों में बताइए: {role} के लिए {topic_focus} क्यों ज़रूरी है और आप इसका अभ्यास कैसे करते हैं?"
+            f"{role} ({category}) में {topic_focus} को लेकर आप किस तरह काम करते हैं?",
+            f"{role} के क्षेत्र में आगे बढ़ने के लिए आप {topic_focus} से जुड़ी कौन-सी बात सबसे ज़रूरी मानते हैं?",
+            f"सरल शब्दों में बताइए: {role} के लिए {topic_focus} क्यों महत्वपूर्ण है और आप इसका अभ्यास कैसे करते हैं?"
         ]
         if has_meaningful_ans:
             templates.append(
@@ -207,8 +217,8 @@ def _build_dynamic_fallback_question(
             )
     else:
         templates = [
-            f"Hi! For {role} ({category}), what are you currently focusing on around {topic_focus}?",
-            f"In {role}, what part of {topic_focus} would you like to learn or improve first?",
+            f"For {role} ({category}), how do you approach {topic_focus} in your work?",
+            f"In {role}, what part of {topic_focus} do you consider most important?",
             f"In simple words, why is {topic_focus} important for a {role}, and how do you practice it?"
         ]
         if has_meaningful_ans:
@@ -222,9 +232,9 @@ def _build_dynamic_fallback_question(
             return q
     suffix = random.randint(10, 99)
     return (
-        f"{role} में {topic_focus} को लेकर आप अगला क्या कदम उठाएंगे? (भाग {suffix})"
+        f"{role} में {topic_focus} को लेकर आपका क्या अनुभव रहा है? (भाग {suffix})"
         if is_hindi
-        else f"What is your next step for {topic_focus} in {role}? (round {suffix})"
+        else f"What has been your experience with {topic_focus} in {role}? (part {suffix})"
     )
 
 
@@ -249,43 +259,40 @@ def _generate_start_response(
         "asked_questions": []
     }
 
-    opening_options = random.choice([
-        ("अपना परिचय और इस क्षेत्र में रुचि", "your background and interest in this role"),
-        ("कोई छोटा प्रोजेक्ट या सीखी हुई स्किल", "a recent project or skill you built"),
-        ("इस भूमिका में आपकी सबसे बड़ी ताकत", "your strongest skill for this role"),
-        ("अभी आप किस विषय पर ध्यान दे रहे हैं", "what you are currently learning for this role")
-    ])
-    hindi_topic, eng_topic = opening_options
-    chosen_topic = hindi_topic if is_hindi else eng_topic
-
     prompt = f"""
     You are a friendly AI interviewer for Role: {role} ({category}).
-    {_language_rule(lang)}
-    Opening focus: {eng_topic}.
+    {_language_rule(lang, allow_greeting=True)}
 
-    Create ONE short, natural, unique opening interview question.
-    Do NOT repeat or resemble any of these recent questions:
-    {json.dumps(recent_qs[-12:], ensure_ascii=False)}
+    Ask the standard first interview question: "Tell me about yourself" along with their interest or background in {role}.
+    Keep it warm, natural, and slightly varied in phrasing so it is not identical to these recent openings:
+    {json.dumps(recent_qs[-8:], ensure_ascii=False)}
 
     Return ONLY the question text without quotes or markdown.
     """
 
     try:
-        ai_question = _generate_with_retry(prompt, json_mode=False, temperature=1.0)
+        ai_question = _generate_with_retry(prompt, json_mode=False, temperature=0.85)
     except Exception as e:
         print(f"Error in start_interview ({type(e).__name__}): {e}")
         ai_question = ""
 
     if not ai_question or _is_duplicate_question(ai_question, recent_qs):
-        ai_question = _build_dynamic_fallback_question(
-            role=role,
-            category=category,
-            difficulty="Easy",
-            topic_focus=chosen_topic,
-            candidate_answer="",
-            is_hindi=is_hindi,
-            blocked=recent_qs
-        )
+        if is_hindi:
+            intro_variants = [
+                f"नमस्ते! इंटरव्यू की शुरुआत करते हैं—कृपया अपने बारे में बताइए और {role} में आपकी रुचि कैसे शुरू हुई?",
+                f"अपने बारे में संक्षेप में बताइए—आपकी पढ़ाई, मुख्य स्किल्स और {role} के प्रति आपकी रुचि क्या है?",
+                f"शुरुआत करने के लिए, आप अपने बारे में कुछ बताइए और यह भी कि आप {role} की भूमिका क्यों चुनना चाहते हैं?",
+                f"कृपया अपना परिचय दीजिए और बताइए कि आपने {role} से जुड़ा अब तक क्या सीखा या किया है?"
+            ]
+        else:
+            intro_variants = [
+                f"Hello! To get started, tell me about yourself and what sparked your interest in {role}.",
+                f"Tell me about yourself—your background, core skills, and why you want to work as a {role}.",
+                f"Let's begin with your introduction: tell me about yourself and your experience related to {role}.",
+                f"Could you tell me about yourself, including your education, strengths, and interest in {role}?"
+            ]
+        choices = [q for q in intro_variants if not _is_duplicate_question(q, recent_qs)]
+        ai_question = random.choice(choices or intro_variants)
 
     SESSION_DB[session_id]["asked_questions"].append(ai_question)
     _remember_question(cid, role, category, lang, ai_question)
@@ -370,28 +377,35 @@ def evaluate_answer(data: AnswerSubmissionRequest):
     ]
     topic_angle = topic_pool[(next_index + random.randint(0, 3)) % len(topic_pool)]
 
+    non_answers = {
+        "no", "na", "n/a", "idk", "i don't know", "dont know", "don't know",
+        "skip", "pass", "nothing", "none", "nahi", "nahin", "nhi",
+        "pata nahi", "pata nhi", "mujhe nahi pata", "maloom nahi", "मालूम नहीं", "पता नहीं", "नहीं",
+        "not sure", "no idea", "yaad nahi", "याद नहीं"
+    }
+    clean_ans = answer_text.lower().strip(".!?। ")
+    word_count = len(answer_text.split())
+    is_unknown_answer = (
+        clean_ans in non_answers
+        or any(phrase in clean_ans for phrase in ["don't know", "dont know", "no idea", "pata nahi", "pata nhi", "पता नहीं", "मालूम नहीं"])
+    )
+
     prompt = f"""
-    AI interviewer for {role} ({category}). {_language_rule(lang)}
-    Question: "{current_q}"
+    AI interviewer for {role} ({category}). {_language_rule(lang, allow_greeting=False)}
+    Question Asked: "{current_q}"
     Candidate Answer: "{answer_text}"
 
-    1. "avatar_reply": 1-2 short natural sentences reacting directly to what the candidate said (if "no"/"idk"/off-topic, gently note it and transition; if good, briefly acknowledge). No numeric marks.
-    2. "feedback": 1 short helpful tip on their answer. No numeric marks.
-    3. Scores (0-100): "completeness", "correctness", "relevance", "clarity", "overall_score" (5-25 if non-answer/irrelevant; 70+ only if genuinely relevant & clear).
-    4. "next_question": One fresh unique question. {level_guide} Focus: {topic_angle}.
+    1. "avatar_reply":
+       - If the candidate does NOT know the answer (e.g., "no", "idk", "pata nahi", "skip", or completely blank/off-topic): politely say it is okay, and YOU (the interviewer) MUST give a clear, simple 2-3 sentence model answer to "{current_q}" so the candidate learns the right answer, then transition smoothly to the next question.
+       - If the candidate answered the question: briefly react to what they said in 1-2 natural sentences without any greeting ("नमस्ते"/"Hi") and without numeric marks.
+    2. "feedback": 1 short helpful tip (or summary of the right answer if they didn't know it). No numeric marks.
+    3. Scores (0-100): "completeness", "correctness", "relevance", "clarity", "overall_score" (5-20 if candidate didn't know/skipped; 70+ only if genuinely relevant & clear).
+    4. "next_question": One fresh unique question WITHOUT any greeting ("नमस्ते"/"Hi"/"Hello"). {level_guide} Focus: {topic_angle}.
        Avoid repeating: {json.dumps(all_blocked_questions[-18:], ensure_ascii=False)}
 
     Return JSON only:
     {{"completeness":0,"correctness":0,"relevance":0,"clarity":0,"overall_score":0,"feedback":"","avatar_reply":"","next_question":""}}
     """
-
-    non_answers = {
-        "no", "na", "n/a", "idk", "i don't know", "dont know", "don't know",
-        "skip", "pass", "nothing", "none", "nahi", "nahin", "nhi",
-        "pata nahi", "pata nhi", "mujhe nahi pata", "maloom nahi", "मालूम नहीं", "पता नहीं", "नहीं"
-    }
-    clean_ans = answer_text.lower().strip(".!?। ")
-    word_count = len(answer_text.split())
 
     try:
         content = _generate_with_retry(prompt, json_mode=True, temperature=0.85)
@@ -402,7 +416,7 @@ def evaluate_answer(data: AnswerSubmissionRequest):
         relevance = max(0, min(100, int(parsed.get("relevance", 25))))
         clarity = max(0, min(100, int(parsed.get("clarity", 30))))
 
-        if clean_ans in non_answers or word_count <= 2:
+        if is_unknown_answer or word_count <= 2:
             completeness = min(completeness, 15)
             correctness = min(correctness, 15)
             relevance = min(relevance, 15)
@@ -415,17 +429,20 @@ def evaluate_answer(data: AnswerSubmissionRequest):
         avatar_reply = (parsed.get("avatar_reply") or "").strip()
         next_q_text = (parsed.get("next_question") or "").strip()
 
+        # Strip accidental repeated greetings from subsequent questions
+        next_q_text = re.sub(r"^(नमस्ते[!।,\s]*|स्वागत है[!।,\s]*|hi[!.,\s]*|hello[!.,\s]*)", "", next_q_text, flags=re.IGNORECASE).strip()
+
     except Exception as e:
         print(f"Error in evaluate_answer ({type(e).__name__}): {e}")
         short_quote = answer_text[:60]
-        if clean_ans in non_answers or word_count <= 2:
+        if is_unknown_answer or word_count <= 2:
             completeness, correctness, relevance, clarity, overall_score = 10, 10, 10, 20, 13
             if is_hindi:
-                feedback = f"आपने '{short_quote}' कहा, जो पूरा उत्तर नहीं है। जो बुनियादी बात पता हो, वह सरल शब्दों में बताएं।"
-                avatar_reply = f"कोई बात नहीं, आपने '{short_quote}' कहा। चलिए अगले सवाल पर चलते हैं।"
+                feedback = f"कोई बात नहीं—'{current_q}' का सरल उत्तर यह है कि आप पहले मूल सिद्धांत को समझें और एक व्यावहारिक उदाहरण के साथ समझाएं।"
+                avatar_reply = f"कोई बात नहीं, मैं इसका संक्षिप्त उत्तर बता देता हूँ: '{current_q}' में सबसे पहले मुख्य अवधारणा को स्पष्ट करना और उसका एक आसान उपयोग बताना ज़रूरी होता है। अब अगले सवाल पर चलते हैं।"
             else:
-                feedback = f"You replied '{short_quote}', which doesn't answer the question yet. Share even a basic idea next time."
-                avatar_reply = f"I noticed you said '{short_quote}'. That's okay—let's move on to the next question."
+                feedback = f"No worries—a good answer to '{current_q}' starts with the core concept clearly followed by one practical example."
+                avatar_reply = f"No problem at all, let me share the answer briefly: for '{current_q}', you should explain the core idea in simple words and give one practical example. Let's move to the next question."
         elif word_count < 10:
             completeness, correctness, relevance, clarity, overall_score = 38, 42, 45, 50, 44
             if is_hindi:
@@ -438,7 +455,7 @@ def evaluate_answer(data: AnswerSubmissionRequest):
             completeness, correctness, relevance, clarity, overall_score = 72, 74, 76, 78, 75
             if is_hindi:
                 feedback = "अच्छा और स्पष्ट उत्तर! एक छोटा उदाहरण जोड़ने से यह और बेहतर होगा।"
-                avatar_reply = "अच्छा उत्तर दिया आपने। चलिए अगले सवाल पर आगे बढ़ते हैं।"
+                avatar_reply = f"आपने '{short_quote}' के साथ अच्छी बात रखी। चलिए अगले सवाल पर आगे बढ़ते हैं।"
             else:
                 feedback = "Clear explanation! Adding one practical example can make it even stronger."
                 avatar_reply = "Good response—you addressed the question clearly. Let's move to the next question."
