@@ -14,7 +14,7 @@ import json
 
 load_dotenv()
 
-app = FastAPI(title="intervAI Enterprise Gemini Backend Engine", version="3.9.0")
+app = FastAPI(title="intervAI Enterprise Gemini Backend Engine", version="4.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -63,28 +63,41 @@ class SandboxEvaluationRequest(BaseModel):
     answer: str
 
 
+STOPWORDS = {
+    "what", "is", "are", "the", "a", "an", "in", "of", "to", "for", "and", "or",
+    "how", "why", "when", "can", "you", "explain", "describe", "tell", "me", "about",
+    "your", "with", "on", "do", "does", "would", "could", "should", "which",
+    "क्या", "है", "हैं", "में", "के", "की", "का", "को", "से", "और", "आप", "अपने",
+    "बारे", "बताइए", "समझाइए", "कैसे", "क्यों", "एक", "पर", "लिए", "करते"
+}
+
+
 def _normalize_text(text: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"[^\w\s\u0900-\u097F]", "", (text or "").lower())).strip()
+
+
+def _content_tokens(text: str) -> set:
+    return {w for w in _normalize_text(text).split() if len(w) > 2 and w not in STOPWORDS}
 
 
 def _is_duplicate_question(candidate_q: str, history: List[str]) -> bool:
     norm_new = _normalize_text(candidate_q)
     if not norm_new:
         return True
-    new_tokens = set(norm_new.split())
+    new_tokens = _content_tokens(candidate_q)
     for old_q in history:
         norm_old = _normalize_text(old_q)
         if norm_new == norm_old:
             return True
-        old_tokens = set(norm_old.split())
+        old_tokens = _content_tokens(old_q)
         if new_tokens and old_tokens:
-            overlap = len(new_tokens & old_tokens) / max(len(new_tokens), len(old_tokens))
-            if overlap >= 0.72:
+            overlap = len(new_tokens & old_tokens) / max(1, min(len(new_tokens), len(old_tokens)))
+            if overlap >= 0.52:
                 return True
     return False
 
 
-def _generate_with_retry(prompt: str, json_mode: bool = False, temperature: float = 0.85):
+def _generate_with_retry(prompt: str, json_mode: bool = False, temperature: float = 0.95):
     models_to_try = ["gemini-3.5-flash-lite", "gemini-2.5-flash"]
     config = types.GenerateContentConfig(
         response_mime_type="application/json" if json_mode else "text/plain",
@@ -167,8 +180,8 @@ def _remember_question(candidate_id: str, role: str, category: str, language: st
         history = RECENT_QUESTIONS_BY_SCOPE.setdefault(key, [])
         if not _is_duplicate_question(question, history):
             history.append(question)
-            if len(history) > 120:
-                RECENT_QUESTIONS_BY_SCOPE[key] = history[-120:]
+            if len(history) > 150:
+                RECENT_QUESTIONS_BY_SCOPE[key] = history[-150:]
 
 
 def _get_recent_questions(
@@ -189,6 +202,29 @@ def _get_recent_questions(
     return merged
 
 
+def _pick_fresh_topic_angle(role: str, category: str, next_index: int) -> str:
+    diverse_angles = [
+        "data structures choice and time-space trade-offs",
+        "API design, status codes, and input validation",
+        "database indexing, transactions, and slow queries",
+        "authentication, authorization, and data security",
+        "caching strategies and cache invalidation",
+        "asynchronous processing, queues, and background jobs",
+        "concurrency, race conditions, and locking",
+        "unit testing, integration testing, and mocking",
+        "debugging production logs and memory leaks",
+        "version control, code reviews, and CI/CD pipelines",
+        "error handling, retries, and graceful degradation",
+        "microservices vs monolith architecture trade-offs",
+        "handling sudden traffic spikes and rate limiting",
+        "clean code refactoring and design patterns",
+        "cloud deployment, environment configs, and monitoring",
+        "cross-team communication and resolving conflicting requirements"
+    ]
+    random.shuffle(diverse_angles)
+    return diverse_angles[next_index % len(diverse_angles)]
+
+
 def _build_dynamic_fallback_question(
     role: str,
     category: str,
@@ -207,34 +243,34 @@ def _build_dynamic_fallback_question(
 
     if is_hindi:
         templates = [
-            f"{role} ({category}) में {topic_focus} को लेकर आप किस तरह काम करते हैं?",
-            f"{role} के क्षेत्र में आगे बढ़ने के लिए आप {topic_focus} से जुड़ी कौन-सी बात सबसे ज़रूरी मानते हैं?",
-            f"सरल शब्दों में बताइए: {role} के लिए {topic_focus} क्यों महत्वपूर्ण है और आप इसका अभ्यास कैसे करते हैं?"
+            f"{role} ({category}) में {topic_focus} को लागू करते समय आप किन बातों का ध्यान रखते हैं?",
+            f"मान लीजिए {role} के प्रोजेक्ट में {topic_focus} से जुड़ी समस्या आ जाए, तो आप उसे कैसे हल करेंगे?",
+            f"सरल शब्दों में बताइए: {role} के लिए {topic_focus} क्यों ज़रूरी है और इसका एक व्यावहारिक उदाहरण क्या है?"
         ]
         if has_meaningful_ans:
             templates.append(
-                f"आपने '{ans_snippet}' के बारे में बताया—इसे {role} के {category} काम में {topic_focus} से जोड़कर कैसे समझाएंगे?"
+                f"आपने '{ans_snippet}' का ज़िक्र किया—इसे {role} के काम में {topic_focus} से जोड़कर कैसे समझाएंगे?"
             )
     else:
         templates = [
-            f"For {role} ({category}), how do you approach {topic_focus} in your work?",
-            f"In {role}, what part of {topic_focus} do you consider most important?",
-            f"In simple words, why is {topic_focus} important for a {role}, and how do you practice it?"
+            f"For {role} ({category}), what key things do you keep in mind when working with {topic_focus}?",
+            f"Suppose an issue comes up around {topic_focus} in a {role} project—how would you solve it?",
+            f"In simple words, why does {topic_focus} matter for a {role}, and what is one practical example?"
         ]
         if has_meaningful_ans:
             templates.append(
-                f"You mentioned '{ans_snippet}'—how does that connect to {topic_focus} for a {role}?"
+                f"You mentioned '{ans_snippet}'—how does that connect to {topic_focus} in a {role} role?"
             )
 
     random.shuffle(templates)
     for q in templates:
         if not _is_duplicate_question(q, blocked):
             return q
-    suffix = random.randint(10, 99)
+    suffix = random.randint(100, 999)
     return (
-        f"{role} में {topic_focus} को लेकर आपका क्या अनुभव रहा है? (भाग {suffix})"
+        f"{role} में {topic_focus} को बेहतर बनाने के लिए आप कौन-सा तरीका अपनाएंगे? (क्रम {suffix})"
         if is_hindi
-        else f"What has been your experience with {topic_focus} in {role}? (part {suffix})"
+        else f"What approach would you use to improve {topic_focus} in {role}? (case {suffix})"
     )
 
 
@@ -259,19 +295,28 @@ def _generate_start_response(
         "asked_questions": []
     }
 
+    opening_styles = [
+        "Ask them to introduce themselves and share one project or skill they are proud of.",
+        "Ask them to tell you about themselves and what motivated them to choose this role.",
+        "Ask them to briefly walk through their background, strengths, and current learning focus.",
+        "Ask them to introduce themselves and describe the kind of problems they enjoy solving."
+    ]
+    chosen_style = random.choice(opening_styles)
+
     prompt = f"""
     You are a friendly AI interviewer for Role: {role} ({category}).
     {_language_rule(lang, allow_greeting=True)}
 
-    Ask the standard first interview question: "Tell me about yourself" along with their interest or background in {role}.
-    Keep it warm, natural, and slightly varied in phrasing so it is not identical to these recent openings:
-    {json.dumps(recent_qs[-8:], ensure_ascii=False)}
+    Start with a natural "Tell me about yourself" style opening question.
+    Style twist: {chosen_style}
+    Make sure the wording is fresh and NOT similar to any of these previously asked openings:
+    {json.dumps(recent_qs[-20:], ensure_ascii=False)}
 
     Return ONLY the question text without quotes or markdown.
     """
 
     try:
-        ai_question = _generate_with_retry(prompt, json_mode=False, temperature=0.85)
+        ai_question = _generate_with_retry(prompt, json_mode=False, temperature=0.95)
     except Exception as e:
         print(f"Error in start_interview ({type(e).__name__}): {e}")
         ai_question = ""
@@ -282,13 +327,13 @@ def _generate_start_response(
                 f"नमस्ते! इंटरव्यू की शुरुआत करते हैं—कृपया अपने बारे में बताइए और {role} में आपकी रुचि कैसे शुरू हुई?",
                 f"अपने बारे में संक्षेप में बताइए—आपकी पढ़ाई, मुख्य स्किल्स और {role} के प्रति आपकी रुचि क्या है?",
                 f"शुरुआत करने के लिए, आप अपने बारे में कुछ बताइए और यह भी कि आप {role} की भूमिका क्यों चुनना चाहते हैं?",
-                f"कृपया अपना परिचय दीजिए और बताइए कि आपने {role} से जुड़ा अब तक क्या सीखा या किया है?"
+                f"कृपया अपना परिचय दीजिए और बताइए कि आपने {role} से जुड़ा अब तक क्या सीखा या बनाया है?"
             ]
         else:
             intro_variants = [
                 f"Hello! To get started, tell me about yourself and what sparked your interest in {role}.",
                 f"Tell me about yourself—your background, core skills, and why you want to work as a {role}.",
-                f"Let's begin with your introduction: tell me about yourself and your experience related to {role}.",
+                f"Let's begin with your introduction: tell me about yourself and a project or skill you built for {role}.",
                 f"Could you tell me about yourself, including your education, strengths, and interest in {role}?"
             ]
         choices = [q for q in intro_variants if not _is_duplicate_question(q, recent_qs)]
@@ -365,17 +410,8 @@ def evaluate_answer(data: AnswerSubmissionRequest):
     current_q = previous_questions[-1] if previous_questions else ("अपने बारे में बताइए" if is_hindi else "Tell me about yourself")
     next_index = question_index + 1
     next_difficulty, level_guide = _get_difficulty_for_index(next_index)
-
-    topic_pool = [
-        "core concepts and fundamentals",
-        "practical tools and daily workflow",
-        "debugging and fixing errors",
-        "handling edge cases and bad inputs",
-        "speed, memory, and scalability",
-        "teamwork and design trade-offs",
-        "real project decisions and testing"
-    ]
-    topic_angle = topic_pool[(next_index + random.randint(0, 3)) % len(topic_pool)]
+    topic_angle = _pick_fresh_topic_angle(role, category, next_index)
+    random_seed_tag = random.randint(1000, 9999)
 
     non_answers = {
         "no", "na", "n/a", "idk", "i don't know", "dont know", "don't know",
@@ -392,23 +428,27 @@ def evaluate_answer(data: AnswerSubmissionRequest):
 
     prompt = f"""
     AI interviewer for {role} ({category}). {_language_rule(lang, allow_greeting=False)}
+    Session Variation Seed: #{random_seed_tag}
     Question Asked: "{current_q}"
     Candidate Answer: "{answer_text}"
 
     1. "avatar_reply":
-       - If the candidate does NOT know the answer (e.g., "no", "idk", "pata nahi", "skip", or completely blank/off-topic): politely say it is okay, and YOU (the interviewer) MUST give a clear, simple 2-3 sentence model answer to "{current_q}" so the candidate learns the right answer, then transition smoothly to the next question.
+       - If the candidate does NOT know the answer (e.g., "no", "idk", "pata nahi", "skip", or completely off-topic): politely say it is okay, and YOU (the interviewer) MUST give a clear, simple 2-3 sentence model answer to "{current_q}" so the candidate learns the right answer, then transition smoothly to the next question.
        - If the candidate answered the question: briefly react to what they said in 1-2 natural sentences without any greeting ("नमस्ते"/"Hi") and without numeric marks.
     2. "feedback": 1 short helpful tip (or summary of the right answer if they didn't know it). No numeric marks.
     3. Scores (0-100): "completeness", "correctness", "relevance", "clarity", "overall_score" (5-20 if candidate didn't know/skipped; 70+ only if genuinely relevant & clear).
-    4. "next_question": One fresh unique question WITHOUT any greeting ("नमस्ते"/"Hi"/"Hello"). {level_guide} Focus: {topic_angle}.
-       Avoid repeating: {json.dumps(all_blocked_questions[-18:], ensure_ascii=False)}
+    4. "next_question": One completely NEW, specific, non-generic question WITHOUT any greeting ("नमस्ते"/"Hi"/"Hello").
+       {level_guide}
+       Mandatory fresh topic angle: {topic_angle}.
+       CRITICAL: Do NOT ask anything similar in concept or wording to ANY of these previously asked questions:
+       {json.dumps(all_blocked_questions[-35:], ensure_ascii=False)}
 
     Return JSON only:
     {{"completeness":0,"correctness":0,"relevance":0,"clarity":0,"overall_score":0,"feedback":"","avatar_reply":"","next_question":""}}
     """
 
     try:
-        content = _generate_with_retry(prompt, json_mode=True, temperature=0.85)
+        content = _generate_with_retry(prompt, json_mode=True, temperature=0.95)
         parsed = json.loads(content)
 
         completeness = max(0, min(100, int(parsed.get("completeness", 25))))
@@ -429,8 +469,23 @@ def evaluate_answer(data: AnswerSubmissionRequest):
         avatar_reply = (parsed.get("avatar_reply") or "").strip()
         next_q_text = (parsed.get("next_question") or "").strip()
 
-        # Strip accidental repeated greetings from subsequent questions
         next_q_text = re.sub(r"^(नमस्ते[!।,\s]*|स्वागत है[!।,\s]*|hi[!.,\s]*|hello[!.,\s]*)", "", next_q_text, flags=re.IGNORECASE).strip()
+
+        # If Gemini still returned a similar question to history, ask Gemini once more with a brand-new angle
+        if next_q_text and _is_duplicate_question(next_q_text, all_blocked_questions):
+            alt_angle = _pick_fresh_topic_angle(role, category, next_index + 5)
+            retry_q_prompt = f"""
+            Generate ONE completely different {role} ({category}) interview question.
+            {_language_rule(lang, allow_greeting=False)}
+            {level_guide}
+            Topic angle: {alt_angle}.
+            It MUST NOT overlap with: {json.dumps(all_blocked_questions[-35:] + [next_q_text], ensure_ascii=False)}
+            Return ONLY the question text.
+            """
+            alt_q = _generate_with_retry(retry_q_prompt, json_mode=False, temperature=1.0)
+            alt_q = re.sub(r"^(नमस्ते[!।,\s]*|स्वागत है[!।,\s]*|hi[!.,\s]*|hello[!.,\s]*)", "", (alt_q or ""), flags=re.IGNORECASE).strip()
+            if alt_q:
+                next_q_text = alt_q
 
     except Exception as e:
         print(f"Error in evaluate_answer ({type(e).__name__}): {e}")
