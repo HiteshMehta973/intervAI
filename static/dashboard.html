@@ -59,7 +59,6 @@
             backdrop-filter: blur(16px);
             border: 1px solid rgba(255, 255, 255, 0.08);
         }
-        /* Custom scrollbar */
         ::-webkit-scrollbar { width: 8px; height: 8px; }
         ::-webkit-scrollbar-track { background: #0b0f19; }
         ::-webkit-scrollbar-thumb { background: #1f293d; border-radius: 4px; }
@@ -89,7 +88,10 @@
                     </div>
                     <span class="text-2xl font-extrabold tracking-tight text-white">interv<span class="text-cyan-400">AI</span></span>
                 </a>
-                <span class="hidden sm:inline-block px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 text-xs font-mono">Candidate Dashboard</span>
+                <span id="engine-status-pill" class="hidden sm:inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 text-xs font-mono">
+                    <span class="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse"></span>
+                    <span>Checking Engine...</span>
+                </span>
             </div>
 
             <!-- Search & Actions -->
@@ -97,32 +99,23 @@
                 <!-- Search bar -->
                 <div class="hidden md:flex items-center relative">
                     <i class="fa-solid fa-search absolute left-3 text-gray-400 text-xs"></i>
-                    <input id="dashboard-search-input" oninput="handleDashboardSearch(this.value)" type="text" placeholder="Search sessions, topics..." class="bg-gray-900/80 border border-gray-800 rounded-xl pl-9 pr-4 py-2 text-xs text-gray-200 focus:outline-none focus:border-cyan-500 w-64 transition-all">
+                    <input id="dashboard-search-input" oninput="handleDashboardSearch(this.value)" type="text" placeholder="Search sessions, roles..." class="bg-gray-900/80 border border-gray-800 rounded-xl pl-9 pr-4 py-2 text-xs text-gray-200 focus:outline-none focus:border-cyan-500 w-64 transition-all">
                 </div>
 
                 <!-- Notifications Dropdown Trigger -->
                 <div class="relative">
                     <button onclick="toggleNotifications()" class="w-10 h-10 rounded-xl bg-gray-900 border border-gray-800 flex items-center justify-center text-gray-300 hover:text-cyan-400 hover:border-cyan-500/50 transition relative cursor-pointer">
                         <i class="fa-solid fa-bell text-sm"></i>
-                        <span class="absolute top-2 right-2 w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span>
-                        <span class="absolute top-2 right-2 w-2 h-2 rounded-full bg-cyan-400"></span>
+                        <span id="notif-dot-ping" class="absolute top-2 right-2 w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span>
+                        <span id="notif-dot" class="absolute top-2 right-2 w-2 h-2 rounded-full bg-cyan-400"></span>
                     </button>
                     <!-- Notifications Panel -->
                     <div id="notif-dropdown" class="hidden absolute right-0 mt-2 w-80 glass-panel rounded-2xl shadow-2xl p-4 border border-gray-800 z-50">
                         <div class="flex items-center justify-between pb-3 border-b border-gray-800 mb-3">
-                            <h4 class="text-xs font-bold uppercase tracking-wider text-white">Notifications</h4>
+                            <h4 class="text-xs font-bold uppercase tracking-wider text-white">Live Activity Feed</h4>
                             <span class="text-[10px] text-cyan-400 cursor-pointer hover:underline" onclick="toggleNotifications()">Close</span>
                         </div>
-                        <div id="notif-list" class="space-y-3 text-xs">
-                            <div class="p-2.5 rounded-xl bg-gray-900/60 border border-gray-800/80 flex items-start space-x-3">
-                                <div class="w-7 h-7 rounded-lg bg-cyan-500/20 text-cyan-400 flex items-center justify-center shrink-0 mt-0.5"><i class="fa-solid fa-trophy"></i></div>
-                                <div>
-                                    <p class="text-gray-200 font-medium">Platform Ready</p>
-                                    <p class="text-gray-400 text-[11px]">Welcome to intervAI live workspace.</p>
-                                    <span class="text-[9px] text-gray-500">Active</span>
-                                </div>
-                            </div>
-                        </div>
+                        <div id="notif-list" class="space-y-3 text-xs max-h-64 overflow-y-auto pr-1"></div>
                     </div>
                 </div>
 
@@ -135,7 +128,7 @@
                     </div>
                     <div class="hidden lg:block text-left">
                         <div class="text-xs font-bold text-white user-display-name">Loading...</div>
-                        <div id="user-tier-label" class="text-[10px] text-cyan-400">Career Workspace</div>
+                        <div id="user-tier-label" class="text-[10px] text-cyan-400">0 Sessions Completed</div>
                     </div>
                     <button onclick="logoutUser()" title="Sign Out" class="w-10 h-10 rounded-xl bg-gray-900 border border-gray-800 flex items-center justify-center text-gray-400 hover:text-red-400 hover:border-red-500/50 transition cursor-pointer">
                         <i class="fa-solid fa-right-from-bracket text-sm"></i>
@@ -210,14 +203,14 @@
                     <span>Account Settings</span>
                 </button>
 
-                <!-- Quick AI Tip Card inside Sidebar -->
+                <!-- Dynamic Pro Tip Card inside Sidebar -->
                 <div class="mt-6 pt-4 border-t border-gray-800/80">
                     <div class="bg-gradient-to-br from-indigo-950/50 to-gray-900 p-3.5 rounded-xl border border-indigo-500/20 text-xs">
                         <div class="flex items-center space-x-2 text-indigo-400 font-bold mb-1">
                             <i class="fa-solid fa-brain"></i>
-                            <span>Pro Tip of the Day</span>
+                            <span>Live Coaching Focus</span>
                         </div>
-                        <p class="text-gray-400 leading-relaxed text-[11px]">
+                        <p id="sidebar-dynamic-tip" class="text-gray-400 leading-relaxed text-[11px]">
                             Give clear, structured answers with examples, keep your camera active, and stay on the interview tab.
                         </p>
                     </div>
@@ -235,11 +228,11 @@
                     <div class="absolute -right-10 -bottom-10 w-64 h-64 bg-gradient-to-tr from-cyan-500/10 to-purple-500/10 rounded-full blur-3xl pointer-events-none"></div>
                     <div class="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
                         <div>
-                            <span class="text-xs font-mono uppercase tracking-widest text-cyan-400 bg-cyan-500/10 px-3 py-1 rounded-full border border-cyan-500/20">Ready for Success</span>
+                            <span id="hero-status-tag" class="text-xs font-mono uppercase tracking-widest text-cyan-400 bg-cyan-500/10 px-3 py-1 rounded-full border border-cyan-500/20">Ready for Success</span>
                             <h1 class="text-2xl sm:text-4xl font-extrabold text-white mt-3 mb-2">
                                 Welcome back, <span id="welcome-user-name" class="user-display-name">Candidate</span>! 👋
                             </h1>
-                            <p class="text-gray-400 text-sm max-w-xl">Your AI mock interview pipeline is initialized. Launch a session or review your live performance telemetry below.</p>
+                            <p id="hero-dynamic-summary" class="text-gray-400 text-sm max-w-xl">Your AI mock interview pipeline is initialized. Launch a session or review your live performance telemetry below.</p>
                         </div>
                         <button onclick="openInterviewModal()" class="px-6 py-3.5 bg-gradient-to-r from-cyan-500 to-indigo-600 text-white font-bold text-sm rounded-xl shadow-xl shadow-cyan-500/25 hover:shadow-cyan-500/40 hover:scale-105 transition-all flex items-center space-x-3 shrink-0 cursor-pointer">
                             <i class="fa-solid fa-play text-xs"></i>
@@ -247,7 +240,7 @@
                         </button>
                     </div>
 
-                    <!-- Quick Stats Grid (Dynamic IDs attached) -->
+                    <!-- Quick Stats Grid -->
                     <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-8 pt-6 border-t border-gray-800">
                         <div class="bg-gray-900/50 p-4 rounded-xl border border-gray-800/80">
                             <div class="text-gray-400 text-xs font-medium mb-1 flex items-center justify-between">
@@ -263,7 +256,7 @@
                                 <i class="fa-solid fa-star text-purple-400"></i>
                             </div>
                             <div id="stat-avg-score" class="text-2xl font-extrabold text-white">No Data</div>
-                            <div class="text-[10px] text-gray-500 mt-1">Overall performance rating</div>
+                            <div id="stat-best-score-sub" class="text-[10px] text-gray-500 mt-1">Overall performance rating</div>
                         </div>
                         <div class="bg-gray-900/50 p-4 rounded-xl border border-gray-800/80">
                             <div class="text-gray-400 text-xs font-medium mb-1 flex items-center justify-between">
@@ -295,18 +288,20 @@
                                 <span class="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
                             </div>
                             <h3 class="text-lg font-bold text-white mb-2">Instant Interview Setup</h3>
-                            <p class="text-xs text-gray-400 mb-6 leading-relaxed">Choose your target role and language to start a progressive interview session.</p>
+                            <p class="text-xs text-gray-400 mb-6 leading-relaxed">Select a preset or enter your own custom target role to launch immediately.</p>
 
                             <div class="space-y-4 mb-6">
                                 <div>
                                     <label class="block text-[11px] font-semibold text-gray-300 uppercase tracking-wider mb-1.5">Target Role</label>
-                                    <select id="quick-role" class="w-full bg-gray-900 border border-gray-700 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-cyan-500 cursor-pointer">
+                                    <select id="quick-role" onchange="toggleCustomRoleInput('quick')" class="w-full bg-gray-900 border border-gray-700 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-cyan-500 cursor-pointer">
                                         <option value="Software Engineer">Software Engineer</option>
                                         <option value="Machine Learning Engineer / Intern">Machine Learning Engineer / Intern</option>
                                         <option value="Senior Software Engineer (L5)">Senior Software Engineer (L5)</option>
                                         <option value="Full Stack Developer (React/Node)">Full Stack Developer (React/Node)</option>
                                         <option value="AI / ML Research Scientist">AI / ML Research Scientist</option>
+                                        <option value="__custom__">+ Custom Target Role...</option>
                                     </select>
+                                    <input id="quick-custom-role" type="text" placeholder="e.g. Data Analyst, Backend Intern..." class="hidden mt-2 w-full bg-gray-900 border border-cyan-500/50 rounded-xl px-3 py-2 text-xs text-white focus:outline-none">
                                 </div>
                                 <div>
                                     <label class="block text-[11px] font-semibold text-gray-300 uppercase tracking-wider mb-1.5">Interview Language</label>
@@ -345,7 +340,7 @@
                 </div>
             </section>
 
-            <!-- TAB 2: ANALYTICS & INSIGHTS (100% Dynamic from Recorded Sessions) -->
+            <!-- TAB 2: ANALYTICS & INSIGHTS -->
             <section id="tab-analytics" class="hidden space-y-8">
                 <div class="glass-panel rounded-2xl p-6 sm:p-8">
                     <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between pb-6 border-b border-gray-800 mb-8">
@@ -358,7 +353,6 @@
 
                     <!-- Metrics Grid -->
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                        <!-- Metric 1 -->
                         <div class="bg-gray-900/60 p-6 rounded-xl border border-gray-800">
                             <div class="flex items-center justify-between mb-4">
                                 <span class="text-xs font-semibold text-gray-400 uppercase">Answer Quality & Depth</span>
@@ -371,7 +365,6 @@
                             <p id="analytics-answer-desc" class="text-xs text-gray-400">Complete an interview session to measure answer quality.</p>
                         </div>
 
-                        <!-- Metric 2 -->
                         <div class="bg-gray-900/60 p-6 rounded-xl border border-gray-800">
                             <div class="flex items-center justify-between mb-4">
                                 <span class="text-xs font-semibold text-gray-400 uppercase">Camera & Body Presence</span>
@@ -384,7 +377,6 @@
                             <p id="analytics-camera-desc" class="text-xs text-gray-400">Camera presence and posture telemetry from your sessions.</p>
                         </div>
 
-                        <!-- Metric 3 -->
                         <div class="bg-gray-900/60 p-6 rounded-xl border border-gray-800">
                             <div class="flex items-center justify-between mb-4">
                                 <span class="text-xs font-semibold text-gray-400 uppercase">Tab & Screen Integrity</span>
@@ -397,6 +389,9 @@
                             <p id="analytics-integrity-desc" class="text-xs text-gray-400">Tracks tab switches during live interviews.</p>
                         </div>
                     </div>
+
+                    <!-- Role-wise Performance Breakdown -->
+                    <div id="role-breakdown-container" class="mb-8"></div>
 
                     <!-- Improvement Recommendations -->
                     <div class="bg-gray-900/80 p-6 rounded-xl border border-gray-800 space-y-4">
@@ -416,18 +411,23 @@
             <!-- TAB 3: SESSION HISTORY -->
             <section id="tab-history" class="hidden space-y-8">
                 <div class="glass-panel rounded-2xl p-6 sm:p-8">
-                    <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between pb-6 border-b border-gray-800 mb-6">
+                    <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between pb-6 border-b border-gray-800 mb-6 gap-4">
                         <div>
                             <span class="text-xs font-mono uppercase tracking-widest text-cyan-400 bg-cyan-500/10 px-3 py-1 rounded-full border border-cyan-500/20">Archive</span>
                             <h2 class="text-2xl font-extrabold text-white mt-3">All Mock Interview Sessions</h2>
                             <p class="text-gray-400 text-sm mt-1">Access transcripts, camera telemetry, and evaluation reports for all past sessions.</p>
                         </div>
-                        <div class="mt-4 sm:mt-0 flex space-x-3">
+                        <div class="flex flex-wrap items-center gap-2">
                             <input id="history-filter-input" oninput="handleDashboardSearch(this.value)" type="text" placeholder="Filter by role or category..." class="bg-gray-900 border border-gray-700 rounded-xl px-4 py-2 text-xs text-white focus:outline-none focus:border-cyan-500">
+                            <button onclick="exportSessionHistory()" class="px-3.5 py-2 rounded-xl bg-gray-900 hover:bg-gray-800 border border-gray-700 text-xs font-semibold text-cyan-400 transition cursor-pointer" title="Download History JSON">
+                                <i class="fa-solid fa-download mr-1"></i>Export
+                            </button>
+                            <button onclick="clearSessionHistory()" class="px-3.5 py-2 rounded-xl bg-gray-900 hover:bg-red-950/50 border border-gray-700 hover:border-red-500/40 text-xs font-semibold text-red-400 transition cursor-pointer" title="Clear Recorded History">
+                                <i class="fa-solid fa-trash mr-1"></i>Clear
+                            </button>
                         </div>
                     </div>
 
-                    <!-- Detailed History List Container -->
                     <div id="full-history-container" class="space-y-4">
                         <div class="text-center py-12 text-gray-500 text-xs">
                             <i class="fa-solid fa-folder-open text-3xl mb-3 text-gray-600 block"></i>
@@ -507,14 +507,14 @@
             <div class="mb-6">
                 <span class="text-xs font-mono uppercase tracking-widest text-cyan-400 bg-cyan-500/10 px-3 py-1 rounded-full border border-cyan-500/20">Live Session Setup</span>
                 <h3 class="text-xl font-extrabold text-white mt-3">Configure AI Mock Interview</h3>
-                <p class="text-xs text-gray-400 mt-1">Select your role, category, and language to launch the interview room.</p>
+                <p class="text-xs text-gray-400 mt-1">Select or enter your role, category, and language to launch the interview room.</p>
             </div>
 
             <div class="space-y-5 mb-8">
                 <!-- 1. Target Job Role & Level -->
                 <div>
                     <label class="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">1. Target Job Role & Level</label>
-                    <select id="modal-role" class="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-xs text-white focus:outline-none focus:border-cyan-500 cursor-pointer">
+                    <select id="modal-role" onchange="toggleCustomRoleInput('modal')" class="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-xs text-white focus:outline-none focus:border-cyan-500 cursor-pointer">
                         <optgroup label="AI, Data & Engineering">
                             <option value="Software Engineer">Software Engineer</option>
                             <option value="Machine Learning Engineer / Intern">Machine Learning Engineer / Intern</option>
@@ -527,7 +527,9 @@
                             <option value="Product Manager (Tech Lead)">Product Manager (Tech Lead)</option>
                             <option value="Executive Manager Intern">Executive Manager Intern</option>
                         </optgroup>
+                        <option value="__custom__">+ Enter Custom Role...</option>
                     </select>
+                    <input id="modal-custom-role" type="text" placeholder="Type custom role (e.g. Analyst Trainee, Python Developer)..." class="hidden mt-2 w-full bg-gray-900 border border-cyan-500/50 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none">
                 </div>
 
                 <!-- 2. Interactive Categories -->
@@ -584,6 +586,44 @@
         let allUserSessions = [];
         let activeCurrentUser = null;
 
+        function toggleCustomRoleInput(prefix) {
+            const selectEl = document.getElementById(`${prefix}-role`);
+            const inputEl = document.getElementById(`${prefix}-custom-role`);
+            if (!selectEl || !inputEl) return;
+            if (selectEl.value === '__custom__') {
+                inputEl.classList.remove('hidden');
+                inputEl.focus();
+            } else {
+                inputEl.classList.add('hidden');
+            }
+        }
+
+        function resolveRoleValue(prefix) {
+            const selectEl = document.getElementById(`${prefix}-role`);
+            const inputEl = document.getElementById(`${prefix}-custom-role`);
+            if (selectEl && selectEl.value === '__custom__') {
+                const typed = (inputEl && inputEl.value || "").trim();
+                return typed || "Software Engineer";
+            }
+            return (selectEl && selectEl.value) || "Software Engineer";
+        }
+
+        async function checkBackendEngineStatus() {
+            const pill = document.getElementById('engine-status-pill');
+            if (!pill) return;
+            try {
+                const res = await fetch('/api/health');
+                const data = await res.json();
+                if (data && data.status === 'online') {
+                    pill.className = "hidden sm:inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-mono";
+                    pill.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span><span>AI Engine Online</span>`;
+                }
+            } catch {
+                pill.className = "hidden sm:inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-mono";
+                pill.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span><span>Offline Mode</span>`;
+            }
+        }
+
         function syncLatestReportToHistory(username) {
             const historyKey = `intervai_history_${username}`;
             let existing = [];
@@ -628,16 +668,60 @@
             return existing;
         }
 
+        function updateDynamicNotifications(historyArray) {
+            const notifList = document.getElementById('notif-list');
+            const dotPing = document.getElementById('notif-dot-ping');
+            if (!notifList) return;
+
+            if (!historyArray || historyArray.length === 0) {
+                if (dotPing) dotPing.classList.add('hidden');
+                notifList.innerHTML = `
+                    <div class="p-3 rounded-xl bg-gray-900/60 border border-gray-800/80 text-gray-400 text-[11px]">
+                        No completed sessions yet. Launch your first mock interview to receive live performance alerts.
+                    </div>
+                `;
+                return;
+            }
+
+            if (dotPing) dotPing.classList.remove('hidden');
+            notifList.innerHTML = historyArray.slice(0, 4).map(s => {
+                const isStrong = Number(s.score) >= 70;
+                const iconClass = isStrong ? "fa-trophy text-emerald-400 bg-emerald-500/20" : "fa-chart-line text-cyan-400 bg-cyan-500/20";
+                return `
+                    <div class="p-2.5 rounded-xl bg-gray-900/60 border border-gray-800/80 flex items-start space-x-3">
+                        <div class="w-7 h-7 rounded-lg ${iconClass} flex items-center justify-center shrink-0 mt-0.5">
+                            <i class="fa-solid ${isStrong ? 'fa-trophy' : 'fa-chart-line'}"></i>
+                        </div>
+                        <div>
+                            <p class="text-gray-200 font-medium">${s.role} (${s.score}/100)</p>
+                            <p class="text-gray-400 text-[11px]">${s.questionsAnswered || 0} questions answered • Tab switches: ${s.tabSwitchCount || 0}</p>
+                            <span class="text-[9px] text-gray-500">${s.date}</span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
         function updateStatsAndAnalytics(historyArray) {
             const totalSessions = historyArray.length;
             const statSessionsEl = document.getElementById('stat-total-sessions');
             const statAvgScoreEl = document.getElementById('stat-avg-score');
+            const statBestSubEl = document.getElementById('stat-best-score-sub');
             const statPracticeTimeEl = document.getElementById('stat-practice-time');
             const statReadinessEl = document.getElementById('stat-hire-readiness');
+            const userTierEl = document.getElementById('user-tier-label');
+            const heroSummaryEl = document.getElementById('hero-dynamic-summary');
+            const sidebarTipEl = document.getElementById('sidebar-dynamic-tip');
+            const roleBreakdownEl = document.getElementById('role-breakdown-container');
+
+            if (userTierEl) {
+                userTierEl.textContent = `${totalSessions} Session${totalSessions === 1 ? '' : 's'} Completed`;
+            }
 
             if (totalSessions === 0) {
                 statSessionsEl.textContent = "0";
                 statAvgScoreEl.textContent = "No Data";
+                statBestSubEl.textContent = "Overall performance rating";
                 statPracticeTimeEl.textContent = "0m";
                 statReadinessEl.textContent = "Pending";
                 statReadinessEl.className = "text-2xl font-extrabold text-gray-400";
@@ -653,11 +737,14 @@
                 document.getElementById('analytics-integrity-score').textContent = "--%";
                 document.getElementById('analytics-integrity-badge').textContent = "No Data";
                 document.getElementById('analytics-integrity-bar').style.width = "0%";
+                if (roleBreakdownEl) roleBreakdownEl.innerHTML = "";
                 return;
             }
 
             const totalScoreSum = historyArray.reduce((acc, s) => acc + Number(s.score || 0), 0);
             const avgScore = Math.round(totalScoreSum / totalSessions);
+            const bestScore = Math.max(...historyArray.map(s => Number(s.score || 0)));
+            const latestSession = historyArray[0];
 
             const totalSeconds = historyArray.reduce((acc, s) => acc + Number(s.durationSeconds || 0), 0);
             const mins = Math.max(1, Math.round(totalSeconds / 60));
@@ -667,17 +754,30 @@
 
             statSessionsEl.textContent = String(totalSessions);
             statAvgScoreEl.innerHTML = `${avgScore}<span class="text-xs text-gray-400 font-normal">/100</span>`;
+            statBestSubEl.textContent = `Best score: ${bestScore}/100`;
             statPracticeTimeEl.textContent = practiceLabel;
             statReadinessEl.textContent = `${readiness}%`;
             statReadinessEl.className = readiness >= 70
                 ? "text-2xl font-extrabold text-emerald-400"
                 : "text-2xl font-extrabold text-amber-400";
 
+            if (heroSummaryEl && latestSession) {
+                heroSummaryEl.textContent = `Latest session: ${latestSession.role} (${latestSession.score}/100 on ${latestSession.date}). Launch a new session to keep improving.`;
+            }
+
             // Analytics Tab Metrics
             const avgAns = Math.round(historyArray.reduce((acc, s) => acc + Number(s.answerScore ?? s.score ?? 0), 0) / totalSessions);
             const avgCam = Math.round(historyArray.reduce((acc, s) => acc + Number(s.bodyLanguageScore ?? 50), 0) / totalSessions);
             const totalSwitches = historyArray.reduce((acc, s) => acc + Number(s.tabSwitchCount ?? 0), 0);
             const avgIntegrity = Math.max(15, 100 - Math.round((totalSwitches / totalSessions) * 15));
+
+            if (sidebarTipEl) {
+                sidebarTipEl.textContent = avgAns < 65
+                    ? "Focus on explaining core concepts in 3-4 clear sentences with a real project example."
+                    : totalSwitches > 0
+                        ? "Keep the interview tab active throughout the session to maintain a 100% integrity score."
+                        : "Great consistency! Try Medium/Hard Technical or System Design rounds next.";
+            }
 
             document.getElementById('analytics-answer-score').textContent = `${avgAns}%`;
             document.getElementById('analytics-answer-badge').textContent = avgAns >= 70 ? "Strong" : "Needs Work";
@@ -695,6 +795,38 @@
             document.getElementById('analytics-integrity-desc').textContent = totalSwitches === 0
                 ? "Zero tab switches recorded across sessions."
                 : `${totalSwitches} total tab switch(es) recorded.`;
+
+            // Role-wise breakdown
+            if (roleBreakdownEl) {
+                const roleMap = {};
+                historyArray.forEach(s => {
+                    const r = s.role || "General";
+                    if (!roleMap[r]) roleMap[r] = { count: 0, sum: 0 };
+                    roleMap[r].count += 1;
+                    roleMap[r].sum += Number(s.score || 0);
+                });
+                const roleRows = Object.entries(roleMap).map(([roleName, info]) => {
+                    const rAvg = Math.round(info.sum / info.count);
+                    return `
+                        <div class="bg-gray-900/60 p-4 rounded-xl border border-gray-800 flex items-center justify-between">
+                            <div>
+                                <div class="text-xs font-bold text-white">${roleName}</div>
+                                <div class="text-[11px] text-gray-400">${info.count} session(s)</div>
+                            </div>
+                            <div class="flex items-center space-x-3">
+                                <div class="w-28 bg-gray-800 h-2 rounded-full overflow-hidden">
+                                    <div class="bg-cyan-400 h-full" style="width:${rAvg}%"></div>
+                                </div>
+                                <span class="text-xs font-bold text-cyan-400">${rAvg}/100</span>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+                roleBreakdownEl.innerHTML = `
+                    <h4 class="text-xs font-bold uppercase tracking-wider text-gray-400 mb-3">Performance by Target Role</h4>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">${roleRows}</div>
+                `;
+            }
 
             document.getElementById('analytics-recommendations').innerHTML = `
                 <div class="p-4 rounded-lg bg-gray-900 border border-gray-800 flex items-start space-x-3">
@@ -756,7 +888,7 @@
                             </div>
                             <div>
                                 <h4 class="text-sm font-bold text-white">${session.role}</h4>
-                                <p class="text-xs text-gray-400">${session.date} • ${session.category} • ${session.questionsAnswered || 0} Qs</p>
+                                <p class="text-xs text-gray-400">${session.date} • ${session.category} • ${session.language || 'English'} • ${session.questionsAnswered || 0} Qs</p>
                             </div>
                         </div>
                         <div class="text-right flex items-center space-x-4">
@@ -780,6 +912,7 @@
                                 <div class="flex items-center space-x-3">
                                     <h4 class="text-sm font-bold text-white">${session.role}</h4>
                                     <span class="px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-400 text-[10px] font-mono">${session.category}</span>
+                                    <span class="px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 text-[10px] font-mono">${session.language || 'English'}</span>
                                 </div>
                                 <p class="text-xs text-gray-400 mt-1">Completed • ${session.date} • ${session.questionsAnswered || 0} answered • ${session.durationSeconds || 0}s • Tab switches: ${session.tabSwitchCount || 0}</p>
                             </div>
@@ -807,12 +940,44 @@
             const filtered = allUserSessions.filter(s =>
                 (s.role || "").toLowerCase().includes(q) ||
                 (s.category || "").toLowerCase().includes(q) ||
+                (s.language || "").toLowerCase().includes(q) ||
                 (s.date || "").toLowerCase().includes(q)
             );
             renderSessionHistory(filtered);
         }
 
-        document.addEventListener('DOMContentLoaded', () => {
+        function exportSessionHistory() {
+            if (!allUserSessions || allUserSessions.length === 0) {
+                showToast('No session history available to export.', 'info');
+                return;
+            }
+            const blob = new Blob([JSON.stringify(allUserSessions, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `intervai_sessions_${new Date().toISOString().slice(0, 10)}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+            showToast('Session history exported!', 'success');
+        }
+
+        function clearSessionHistory() {
+            if (!allUserSessions || allUserSessions.length === 0) {
+                showToast('History is already empty.', 'info');
+                return;
+            }
+            if (!confirm('Clear all recorded session history on this browser?')) return;
+            const uname = (activeCurrentUser && activeCurrentUser.username) || "candidate";
+            localStorage.removeItem(`intervai_history_${uname}`);
+            localStorage.removeItem('intervai_latest_report');
+            allUserSessions = [];
+            updateStatsAndAnalytics([]);
+            updateDynamicNotifications([]);
+            renderSessionHistory([]);
+            showToast('Session history cleared.', 'success');
+        }
+
+        function refreshDashboardState() {
             let currentUser = null;
             try {
                 currentUser = JSON.parse(localStorage.getItem('intervai_current_user') || 'null');
@@ -857,8 +1022,16 @@
 
             allUserSessions = syncLatestReportToHistory(currentUser.username || "candidate");
             updateStatsAndAnalytics(allUserSessions);
+            updateDynamicNotifications(allUserSessions);
             renderSessionHistory(allUserSessions);
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            refreshDashboardState();
+            checkBackendEngineStatus();
         });
+
+        window.addEventListener('focus', refreshDashboardState);
 
         function saveAccountSettings() {
             const newName = (document.getElementById('settings-fullname').value || "").trim() || "Candidate";
@@ -1011,7 +1184,7 @@
         }
 
         function startQuickInterview() {
-            const role = document.getElementById('quick-role').value;
+            const role = resolveRoleValue('quick');
             const lang = document.getElementById('quick-language').value;
             localStorage.setItem('intervai_active_role', role);
             localStorage.setItem('intervai_active_category', 'Technical');
@@ -1019,11 +1192,11 @@
             showToast(`Starting ${role} (${lang}) session...`, 'success');
             setTimeout(() => {
                 window.location.href = "room.html";
-            }, 800);
+            }, 700);
         }
 
         function launchInterviewRoom() {
-            const role = document.getElementById('modal-role').value;
+            const role = resolveRoleValue('modal');
             const category = document.getElementById('selected-category').value;
             const lang = document.getElementById('modal-language').value;
 
@@ -1031,10 +1204,10 @@
             localStorage.setItem('intervai_active_category', category);
             localStorage.setItem('intervai_active_language', lang);
 
-            showToast('Launching live interview room...', 'success');
+            showToast(`Launching ${role} (${category}) room...`, 'success');
             setTimeout(() => {
                 window.location.href = "room.html";
-            }, 900);
+            }, 700);
         }
 
         function showToast(message, type = 'success') {
